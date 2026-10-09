@@ -87,8 +87,9 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   Betragsprüfung. Rechnungen von Marktplatz-Verkäufern ohne lesbaren Betrag werden nur zugeordnet, wenn die
   Bestellübersicht denselben Betrag zeigt (Hinweis „bitte prüfen“). Das Layout wurde an einem Wochenexport geprüft,
   die PdfPig-Textausgabe aber noch nicht auf Windows.
-- **Eingangsordner, sonstige Lieferanten:** Zugeordnet wird, wenn die im Buchungstext genannte Rechnungsnummer im PDF steht,
-  oder wenn Betrag und Shop-/Verkäufername im PDF stehen. Nur der Betrag allein ergibt einen Hinweis, keine Zuordnung.
+- **Eingangsordner, sonstige Lieferanten:** Zugeordnet wird nur, wenn der **Betrag auf den Cent** im PDF steht
+  und dazu die im Buchungstext genannte Rechnungsnummer oder der Shop-/Verkäufername. Passt nur die Rechnungsnummer, aber nicht der
+  Betrag, oder nur der Betrag ohne Namen, gibt es einen Hinweis, aber keine Zuordnung.
 - **Scans / OCR:** Eingescannte PDFs ohne Textebene (Eingangsordner) werden mit der in Windows eingebauten Texterkennung
   (Windows.Media.Ocr, Sprachpaket Deutsch nötig) gelesen, die ersten 3 Seiten. Treffer aus OCR tragen den Hinweis
   „Scan per OCR gelesen, Zahlen genau kontrollieren“. Ist die OCR nicht verfügbar, erscheint eine Warnung. **Nicht kompiliert/getestet**
@@ -96,8 +97,8 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
 - **Mail-Suche:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
   „Mails abrufen“. Nur für Buchungen **ohne Beleg**: Es wird in einem kleinen Zeitfenster (60 Tage vor bis 3 Tage nach der
   Buchung) nach einer Mail gesucht, deren Absender/Betreff den Shop-/Verkäufernamen aus dem Buchungstext enthält (bei Amazon
-  auch die Bestellnummer im Text). Hat die Mail ein PDF, wird es nach `%AppData%\SonOG-Buchhaltung\mail` geladen und mit
-  Rechnungsnummer (aus dem Buchungstext) und/oder Betrag abgeglichen; ohne Anhang steht ein Hinweis in der Tabelle.
+  auch die Bestellnummer im Text). Hat die Mail ein PDF, wird es nach `%AppData%\SonOG-Buchhaltung\mail` geladen und nur zugeordnet,
+  wenn der Betrag im PDF steht (Rechnungsnummer aus dem Buchungstext zusätzlich bevorzugt); ohne Anhang steht ein Hinweis in der Tabelle.
   Alles nur lesend. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`. Vor dem Druck zeigt ein Dialog alle
   Belege (Mail-Funde gelb) und lässt falsche abwählen. Der Mail-Code (MailKit) ist nicht gegen ein echtes Postfach getestet.
 - Echte Kontoauszüge, Rechnungen und Excel-Ausgaben sind per `.gitignore` vom Repo ausgeschlossen.

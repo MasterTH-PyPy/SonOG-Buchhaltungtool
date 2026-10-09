@@ -508,6 +508,19 @@ public class PaymentReconcilerTests
     }
 
     [Fact]
+    public void Inbound_reference_number_with_wrong_amount_is_not_matched()
+    {
+        var b = Fx.Classify("Lastschrift", -99.00m, "Musterfirma GmbH Rechnung RE-2026-0815");
+        var docs = new[] { Inb("e/a.pdf", "Musterfirma GmbH Rechnung Nr. RE-2026-0815 Summe 119,00 EUR", 119.00m) };
+
+        InboundMatcher.Assign(new[] { b }, docs);
+
+        Assert.Empty(b.ReceiptFiles);
+        Assert.Contains("Betrag", b.ReceiptNote);
+        Assert.Contains("119,00", b.ReceiptNote);
+    }
+
+    [Fact]
     public void Inbound_invoice_by_amount_needs_the_name_too()
     {
         var b = Fx.Classify("Lastschrift", -20.00m, "Musterfirma GmbH");

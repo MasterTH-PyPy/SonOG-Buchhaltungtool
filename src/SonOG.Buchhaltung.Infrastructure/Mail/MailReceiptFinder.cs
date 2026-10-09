@@ -206,13 +206,19 @@ public static class MailReceiptFinder
             scored.Add((c, files, refHit, amountHit));
         }
 
-        var best = scored.OrderByDescending(s => (s.RefHit ? 2 : 0) + (s.AmountHit ? 1 : 0)).First();
+        // Der Betrag muss im PDF stehen (der Absender passt schon über die Suche). Sonst wird nicht zugeordnet.
+        var good = scored.Where(x => x.AmountHit).OrderByDescending(x => x.RefHit ? 1 : 0).ToList();
+        if (good.Count == 0)
+        {
+            var any = scored[0];
+            b.ReceiptNote = $"Mail von {any.Mail.Sender} ({any.Mail.Date:dd.MM.yyyy}) mit PDF gefunden, aber der Betrag {amount:N2} steht nicht im PDF" +
+                            (any.RefHit ? " (Rechnungsnummer passt)" : "") + " - nicht zugeordnet: " + Path.GetFileName(any.Files[0]);
+            return;
+        }
+        var best = good[0];
         b.ReceiptFiles.AddRange(best.Files);
-        var what = best.RefHit && best.AmountHit ? "Rechnungsnummer und Betrag im PDF gefunden"
-                 : best.RefHit ? "Rechnungsnummer im PDF gefunden, Betrag nicht"
-                 : best.AmountHit ? "Betrag im PDF gefunden"
-                 : "weder Rechnungsnummer noch Betrag im PDF gefunden";
-        b.ReceiptNote = $"Beleg aus Mail von {best.Mail.Sender} ({best.Mail.Date:dd.MM.yyyy}): {what} - bitte prüfen"
+        b.ReceiptNote = $"Beleg aus Mail von {best.Mail.Sender} ({best.Mail.Date:dd.MM.yyyy}): Betrag " +
+                        (best.RefHit ? "und Rechnungsnummer" : "") + " im PDF gefunden - bitte prüfen"
                         + (withPdf.Count > 1 ? $" ({withPdf.Count} Mails mit Anhang)" : "");
     }
 

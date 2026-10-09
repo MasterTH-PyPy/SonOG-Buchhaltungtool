@@ -32,17 +32,26 @@ public static class InboundMatcher
                 return (Doc: d, RefHit: refHit, AmountHit: amountHit, NameHit: nameHit);
             }).ToList();
 
-            var good = scored.Where(s => s.RefHit || (s.AmountHit && s.NameHit)).ToList();
+            // Der Betrag muss immer stimmen. Dazu muss die Rechnungsnummer ODER der Name des Lieferanten im PDF stehen.
+            var good = scored.Where(s => s.AmountHit && (s.RefHit || s.NameHit)).ToList();
             if (good.Count > 0)
             {
-                var best = good.OrderByDescending(s => (s.RefHit ? 4 : 0) + (s.AmountHit ? 2 : 0) + (s.NameHit ? 1 : 0)).First();
+                var best = good.OrderByDescending(s => (s.RefHit ? 2 : 0) + (s.NameHit ? 1 : 0)).First();
                 taken.Add(best.Doc.FilePath);
                 b.ReceiptFiles.Add(best.Doc.FilePath);
-                b.ReceiptNote = "Eingangsrechnung " + Path.GetFileName(best.Doc.FilePath) + ": " +
-                    (best.RefHit && best.AmountHit ? "Rechnungsnummer und Betrag gefunden"
-                     : best.RefHit ? "Rechnungsnummer gefunden, Betrag nicht"
-                     : "Betrag und Name gefunden") + " - bitte prüfen" + (best.Doc.FromOcr ? " (Scan per OCR gelesen, Zahlen genau kontrollieren)" : "") +
+                b.ReceiptNote = "Eingangsrechnung " + Path.GetFileName(best.Doc.FilePath) + ": Betrag " +
+                    (best.RefHit ? "und Rechnungsnummer" : "und Name") + " gefunden - bitte prüfen" +
+                    (best.Doc.FromOcr ? " (Scan per OCR gelesen, Zahlen genau kontrollieren)" : "") +
                     (good.Count > 1 ? $" ({good.Count} mögliche Belege)" : "");
+                continue;
+            }
+
+            var refWrongAmount = scored.Where(s => s.RefHit).ToList();
+            if (refWrongAmount.Count > 0)
+            {
+                var d = refWrongAmount[0].Doc;
+                var found = d.AllAmounts is { Count: > 0 } ? string.Join(", ", d.AllAmounts.Take(5).Select(a => a.ToString("N2", de))) : "kein Betrag lesbar";
+                b.ReceiptNote = $"Rechnungsnummer passt zu {Path.GetFileName(d.FilePath)}, aber der Betrag {amount.ToString("N2", de)} steht dort nicht (im PDF: {found}) - nicht zugeordnet";
                 continue;
             }
 
