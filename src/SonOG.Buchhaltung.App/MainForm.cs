@@ -17,7 +17,7 @@ public sealed class MainForm : Form
     private readonly TextBox _txtInvoices = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtAmazon = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtOutput = new() { Dock = DockStyle.Fill };
-    private readonly DateTimePicker _dtOpenFrom = new() { ShowCheckBox = true, Format = DateTimePickerFormat.Short, Width = 110 };
+    private readonly DateTimePicker _dtOpenFrom = new() { ShowCheckBox = true, Format = DateTimePickerFormat.Short, Width = 140, MinimumSize = new System.Drawing.Size(140, 0), Anchor = AnchorStyles.Left };
     private readonly CheckBox _chkOnlyReview = new() { Text = "Nur Prüffälle anzeigen", AutoSize = true };
     private readonly CheckBox _chkPrint = new() { Text = "Druckpaket erstellen", AutoSize = true, Checked = true };
 
