@@ -59,18 +59,20 @@ public sealed class NumberingState
     }
 
     /// <summary>Erste Nummer, die dieser Auszug bekäme, ohne etwas zu speichern (für die Vorschau).</summary>
-    public int PeekStart(int year, string statementKey)
+    public int PeekStart(int year, string statementKey, int rangeStart = 1)
     {
         if (Years.TryGetValue(year, out var y))
         {
             if (y.Statements.TryGetValue(statementKey, out var existing)) return existing.Start;
-            return y.Last + 1;
+            return Math.Max(y.Last + 1, rangeStart);
         }
-        return 1;
+        return Math.Max(1, rangeStart);
     }
 
     /// <summary>Vergibt den Nummernbereich endgültig. Wiederholung mit gleicher Anzahl liefert denselben Start.</summary>
-    public int Commit(int year, string statementKey, int count)
+    /// <param name="rangeStart">Kleinste erlaubte Nummer: liegt der Zähler darunter, wird er hochgesetzt.</param>
+    /// <param name="rangeEnd">Größte erlaubte Nummer: reicht der Bereich nicht für alle Buchungen, wird nichts vergeben.</param>
+    public int Commit(int year, string statementKey, int count, int rangeStart = 1, int rangeEnd = int.MaxValue)
     {
         if (!Years.TryGetValue(year, out var y))
             Years[year] = y = new YearCounter();
@@ -84,7 +86,11 @@ public sealed class NumberingState
             return existing.Start;
         }
 
-        int start = y.Last + 1;
+        int start = Math.Max(y.Last + 1, Math.Max(1, rangeStart));
+        if ((long)start + count - 1 > rangeEnd)
+            throw new InvalidOperationException(
+                $"Der Nummernkreis ist verbraucht: Es sind noch {Math.Max(0, rangeEnd - start + 1)} Nummer(n) bis {rangeEnd} frei, " +
+                $"der Auszug braucht {count}. Bitte einen neuen Nummernkreis (von/bis) einstellen.");
         y.Statements[statementKey] = new NumberRange { Start = start, Count = count };
         y.Last = start + count - 1;
         return start;

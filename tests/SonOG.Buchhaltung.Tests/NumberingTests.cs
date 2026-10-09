@@ -87,4 +87,32 @@ public class NumberingTests
         }
         finally { File.Delete(path); }
     }
+
+    [Fact]
+    public void Counter_is_raised_to_the_start_of_the_range()
+    {
+        var s = new NumberingState();
+        Assert.Equal(500, s.PeekStart(2026, "a", 500));
+        Assert.Equal(500, s.Commit(2026, "a", 10, 500, 999));
+        Assert.Equal(510, s.Commit(2026, "b", 5, 500, 999));
+    }
+
+    [Fact]
+    public void Counter_already_above_the_start_is_not_lowered()
+    {
+        var s = new NumberingState();
+        s.Commit(2026, "a", 100, 1, 9999);
+        Assert.Equal(101, s.PeekStart(2026, "b", 50));
+    }
+
+    [Fact]
+    public void Exhausted_range_refuses_and_assigns_nothing()
+    {
+        var s = new NumberingState();
+        s.Commit(2026, "a", 90, 1, 100);
+        var ex = Assert.Throws<InvalidOperationException>(() => s.Commit(2026, "b", 20, 1, 100));
+        Assert.Contains("verbraucht", ex.Message);
+        Assert.Equal(91, s.PeekStart(2026, "b", 1)); // nichts wurde vergeben
+        Assert.Equal(1000, s.Commit(2026, "b", 20, 1000, 1999)); // neuer Nummernkreis
+    }
 }

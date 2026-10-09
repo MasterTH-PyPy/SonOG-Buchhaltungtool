@@ -21,6 +21,8 @@ public sealed class ServiceOptions
     public DateOnly? OpenFrom { get; set; }
     public List<MailAccount> MailAccounts { get; set; } = new();
     public bool FetchMail { get; set; }
+    public int NumberFrom { get; set; } = 1;
+    public int NumberTo { get; set; } = 9999;
     public int MailDaysBefore { get; set; } = 60;
     public int MailDaysAfter { get; set; } = 30;
 }
@@ -35,6 +37,8 @@ public sealed class BuchhaltungSession
     public string StatementKey { get; init; } = "";
     public int Year => Statement.Year;
     public int FirstNumber { get; set; }
+    public int NumberFrom { get; init; } = 1;
+    public int NumberTo { get; init; } = int.MaxValue;
     public List<string> Warnings { get; } = new();
 }
 
@@ -89,10 +93,14 @@ public sealed class BuchhaltungService
 
         var key = Path.GetFileNameWithoutExtension(o.StatementPath);
         var state = NumberingState.Load(StatePath);
-        var first = state.PeekStart(statement.Year, key);
+        int numFrom = Math.Max(1, o.NumberFrom), numTo = Math.Max(numFrom, o.NumberTo);
+        var first = state.PeekStart(statement.Year, key, numFrom);
         AssignNumbers(statement, rules, first);
 
         var warnings = new List<string>();
+        if ((long)first + statement.Bookings.Count - 1 > numTo)
+            warnings.Add($"Nummernkreis zu klein: ab {first} bis {numTo} passen nur {Math.Max(0, numTo - first + 1)} Nummern, der Auszug hat {statement.Bookings.Count} Buchungen. " +
+                         "Der Export wird verweigert, bitte den Nummernkreis (von/bis) anpassen.");
         if (statement.BalanceOk == false)
             warnings.Add($"Saldo stimmt nicht: {statement.OpeningBalance:N2} + {statement.Sum:N2} ≠ {statement.ClosingBalance:N2}. Wurden alle Buchungen gelesen?");
         if (statement.BalanceOk is null)
@@ -182,6 +190,8 @@ public sealed class BuchhaltungService
             Rules = rules,
             StatementKey = key,
             FirstNumber = first,
+            NumberFrom = numFrom,
+            NumberTo = numTo,
         };
         session.Warnings.AddRange(warnings);
         return session;
@@ -228,7 +238,7 @@ public sealed class BuchhaltungService
 
         // Nummern endgültig vergeben (idempotent: derselbe Auszug bekommt dieselben Nummern wieder)
         var state = NumberingState.Load(StatePath);
-        var start = state.Commit(session.Year, session.StatementKey, bookings.Count);
+        var start = state.Commit(session.Year, session.StatementKey, bookings.Count, session.NumberFrom, session.NumberTo);
         if (start != session.FirstNumber)
         {
             AssignNumbers(st, session.Rules, start);
