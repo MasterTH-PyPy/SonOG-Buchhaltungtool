@@ -68,4 +68,7 @@ public sealed class Booking
     public List<string> ReceiptFiles { get; set; } = new();
 
     public string ReceiptNote { get; set; } = "";
+
+    /// <summary>Kontierung für die Buchhaltung (Schritt 2); null = noch nicht vorbereitet.</summary>
+    public Accounting.Kontierung? Kontierung { get; set; }
 }

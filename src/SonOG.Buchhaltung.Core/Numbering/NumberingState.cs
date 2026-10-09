@@ -96,6 +96,10 @@ public sealed class NumberingState
         return start;
     }
 
+    /// <summary>True, wenn der Auszug mit genau diesen Nummern endgültig vergeben ist (Export in Schritt 1 erfolgt).</summary>
+    public bool IsCommitted(int year, string statementKey, int start, int count) =>
+        Years.TryGetValue(year, out var y) && y.Statements.TryGetValue(statementKey, out var r) && r.Start == start && r.Count == count;
+
     /// <summary>Gibt die Nummern eines Auszugs frei. Nur der zuletzt vergebene Bereich lässt den Zähler zurückgehen.</summary>
     public bool Release(int year, string statementKey)
     {

@@ -7,7 +7,12 @@
     <AssemblyName>SonOG.Buchhaltung</AssemblyName>
     <!-- Erlaubt das Kompilieren auch auf Linux/CI-Servern -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\app.ico" LogicalName="SonOG.Buchhaltung.App.Resources.app.ico" />
+    <None Include="Resources\app.png" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SonOG.Buchhaltung.Infrastructure\SonOG.Buchhaltung.Infrastructure.csproj" />
   </ItemGroup>

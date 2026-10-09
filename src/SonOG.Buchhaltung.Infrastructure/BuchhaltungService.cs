@@ -61,7 +61,11 @@ public sealed class BuchhaltungService
     {
         _dataDir = dataDir ?? AppSettings.DataDir;
         Directory.CreateDirectory(_dataDir);
+        Taxpool = new TaxpoolService(_dataDir);
     }
+
+    /// <summary>Schritt 2/3 (Kontieren, Taxpool-Importdatei) und Sollstellung.</summary>
+    public TaxpoolService Taxpool { get; }
 
     public string RulesPath => Path.Combine(_dataDir, "regeln.json");
     public string StatePath => Path.Combine(_dataDir, "nummern.json");
@@ -212,6 +216,22 @@ public sealed class BuchhaltungService
     {
         if (!booking.ReceiptFiles.Contains(pdfPath)) booking.ReceiptFiles.Add(pdfPath);
         booking.ReceiptNote = "";
+    }
+
+    /// <summary>True, wenn die Nummern des Auszugs in Schritt 1 endgültig vergeben wurden (Export erfolgt).</summary>
+    public bool NummernEndgueltig(BuchhaltungSession session) =>
+        NumberingState.Load(StatePath).IsCommitted(session.Year, session.StatementKey, session.FirstNumber, session.Statement.Bookings.Count);
+
+    /// <summary>Liest den Ordner der Ausgangsrechnungen (für die Sollstellung; nutzt den Cache).</summary>
+    public InvoiceIndex ScanInvoices(string folder, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("Ordner der Ausgangsrechnungen nicht gefunden: " + folder);
+        var rules = AppRules.Load(RulesPath);
+        var scanner = new DocumentScanner(Path.Combine(_dataDir, "cache"));
+        var scan = scanner.ScanInvoices(folder, rules, progress, ct);
+        var index = new InvoiceIndex();
+        foreach (var r in scan.Items) index.Add(r);
+        return index;
     }
 
     /// <summary>Gibt die Nummern des Auszugs frei, damit er neu nummeriert werden kann.</summary>

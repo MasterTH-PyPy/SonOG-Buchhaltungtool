@@ -40,12 +40,20 @@ public sealed class MainForm : Form
     private readonly TextBox _txtDetails = new() { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical };
     private readonly ToolStripStatusLabel _lblStatus = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
 
+    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
+    private readonly KontierungPanel _kontierung;
+    private readonly SollstellungPanel _sollstellung;
+
     public MainForm()
     {
-        Text = "SonOG Buchhaltung - Kontoauszug nummerieren und abgleichen";
-        Width = 1250;
-        Height = 820;
+        Text = "SonOG Buchhaltung - Kontoauszug nummerieren, abgleichen und an Taxpool übergeben";
+        Icon = AppIcon.Get();
+        Width = 1300;
+        Height = 860;
         StartPosition = FormStartPosition.CenterScreen;
+
+        _kontierung = new KontierungPanel(_service, () => _txtOutput.Text.Trim(), m => _lblStatus.Text = m);
+        _sollstellung = new SollstellungPanel(_service, () => _txtInvoices.Text.Trim(), () => _txtOutput.Text.Trim(), m => _lblStatus.Text = m);
 
         BuildLayout();
         LoadSettings();
@@ -113,11 +121,23 @@ public sealed class MainForm : Form
 
         _warnPanel.Controls.Add(_txtWarnings);
 
-        // Reihenfolge beim Hinzufügen: zuerst Fill, dann Top-Elemente von unten nach oben
-        Controls.Add(split);
-        Controls.Add(_warnPanel);
-        Controls.Add(buttons);
-        Controls.Add(inputs);
+        // Schritt 1: Reihenfolge beim Hinzufügen: zuerst Fill, dann Top-Elemente von unten nach oben
+        var page1 = new TabPage("1 · Zuordnen und Drucken");
+        page1.Controls.Add(split);
+        page1.Controls.Add(_warnPanel);
+        page1.Controls.Add(buttons);
+        page1.Controls.Add(inputs);
+
+        var page2 = new TabPage("2 · Kontieren  →  3 · Taxpool");
+        page2.Controls.Add(_kontierung);
+
+        var page3 = new TabPage("Sollstellung Ausgangsrechnungen");
+        page3.Controls.Add(_sollstellung);
+
+        _tabs.TabPages.AddRange(new[] { page1, page2, page3 });
+        _tabs.Padding = new Point(12, 4);
+
+        Controls.Add(_tabs);
         Controls.Add(status);
     }
 
@@ -288,6 +308,7 @@ public sealed class MainForm : Form
             Rebind();
             ShowWarnings();
             _lblStatus.Text = Summary();
+            _kontierung.SetSession(_session);
         }
         catch (Exception ex)
         {
@@ -357,6 +378,7 @@ public sealed class MainForm : Form
             var session = _session;
             var result = await Task.Run(() => _service.Export(session, options, print, progress));
             Rebind();
+            _kontierung.SetSession(_session); // Nummern sind jetzt endgültig
             _lblStatus.Text = $"Export fertig: {result.FirstNumber} bis {result.LastNumber}, {result.ReceiptCount} Beleg(e).";
 
             if (printNow && result.PrintPackage is not null)
@@ -368,6 +390,7 @@ public sealed class MainForm : Form
 
             var msg = $"Fertig.\n\nKontoauszug: {Path.GetFileName(result.StatementPdf)}\nListe: {Path.GetFileName(result.Excel)}\n" +
                       $"Belege: {result.ReceiptCount} gestempelt" + (result.PrintPackage is null ? "" : $"\nDruckpaket: {Path.GetFileName(result.PrintPackage)}") +
+                      "\n\nWeiter geht es im Reiter \"2 · Kontieren\"." +
                       "\n\nAusgabeordner öffnen?";
             if (MessageBox.Show(this, msg, "Export", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(options.OutputFolder) { UseShellExecute = true });
