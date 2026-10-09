@@ -98,8 +98,8 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   „Mails abrufen“. Beim Einlesen werden **alle PDF-Anhänge** der Mails im Zeitraum des Auszugs (Standard 60 Tage vor bis 30 Tage nach den
   Buchungen, im Fenster „Mail-Postfächer“ einstellbar) geladen (nur lesend, nur die Anhänge) nach `%AppData%\SonOG-Buchhaltung\mail` und wie der Eingangsordner
   nach **Inhalt** abgeglichen (Amazon: Bestellnummer + Betrag; sonstige: Betrag + Rechnungsnummer oder Name; Scans per OCR).
-  Danach sucht eine Nachsuche für Buchungen ohne Beleg gezielt nach Mails des Absenders/Betreffs und meldet z. B. „Mail gefunden,
-  aber ohne Anhang“. Alles mit „bitte prüfen“; vor dem Druck lassen sich falsche Belege abwählen. Protokoll:
+  Der Mailserver wird nicht nach Absender/Betreff gefragt, entscheidend ist allein der PDF-Inhalt. Mails von Amazon werden übersprungen
+  (Amazon kommt aus dem Wochenexport im Eingangsordner). Alles mit „bitte prüfen“; vor dem Druck lassen sich falsche Belege abwählen. Protokoll:
   `%AppData%\SonOG-Buchhaltung\mail-protokoll.txt`. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`.
   Der Mail-Code (MailKit) ist nicht gegen ein echtes Postfach getestet.
 - Echte Kontoauszüge, Rechnungen und Excel-Ausgaben sind per `.gitignore` vom Repo ausgeschlossen.

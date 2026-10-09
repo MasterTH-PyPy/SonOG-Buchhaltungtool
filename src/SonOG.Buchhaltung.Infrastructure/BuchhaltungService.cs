@@ -166,17 +166,12 @@ public sealed class BuchhaltungService
                 b.ReceiptNote = "Kein Ordner für Eingangsrechnungen angegeben";
         }
 
-        // Für Buchungen ohne Beleg: Mail-Postfächer nach einer Mail des Shops/Verkäufers (kleines Zeitfenster) mit PDF-Anhang durchsuchen
         if (o.FetchMail && o.MailAccounts.Count > 0)
         {
-            var before = statement.Bookings.Count(b => b.ReceiptFiles.Count > 0);
-            var problems = MailReceiptFinder.Run(o.MailAccounts, statement.Bookings, mailDir, progress, ct, mailLog);
-            problems.AddRange(mailProblems);
             var logPath = Path.Combine(_dataDir, "mail-protokoll.txt");
-            try { File.WriteAllLines(logPath, mailLog.Concat(problems)); warnings.Add("Mail-Protokoll: " + logPath); } catch (IOException) { }
-            int found = statement.Bookings.Count(b => b.ReceiptFiles.Count > 0) - before;
-            warnings.Add($"Mail-Nachsuche je Buchung (Absender/Betreff): {found} weitere(r) Beleg(e) (bitte prüfen, im Druckdialog abwählbar).");
-            warnings.AddRange(problems.Take(5));
+            try { File.WriteAllLines(logPath, mailLog.Concat(mailProblems)); } catch (IOException) { }
+            warnings.AddRange(mailProblems.Take(5));
+            warnings.Add("Mail-Protokoll: " + logPath);
         }
 
         var session = new BuchhaltungSession

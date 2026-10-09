@@ -7,6 +7,7 @@ namespace SonOG.Buchhaltung.Infrastructure.Mail;
 /// <summary>
 /// Lädt alle PDF-Anhänge der Mails in einem Zeitraum aus den Postfächern (nur lesend, nur die Anhänge, nicht die ganzen Mails).
 /// Die geladenen PDFs werden danach wie der Eingangsordner nach Inhalt, Betrag und Rechnungsnummer abgeglichen.
+/// Mails von Amazon werden übersprungen (Amazon-Rechnungen kommen aus dem Wochenexport).
 /// Dateiname: Datum_Absender_Anhangsname.pdf, bereits vorhandene Dateien werden nicht erneut geladen.
 /// </summary>
 public static class MailDownloader
@@ -55,6 +56,7 @@ public static class MailDownloader
 
                         var date = (sum.InternalDate ?? sum.Date).LocalDateTime;
                         var sender = sum.Envelope?.From?.Mailboxes.FirstOrDefault()?.Address ?? "unbekannt";
+                        if (sender.Contains("amazon", StringComparison.OrdinalIgnoreCase)) continue; // Amazon kommt aus dem Eingangsordner (Wochenexport)
                         int k = 0;
                         foreach (var part in pdfs)
                         {
