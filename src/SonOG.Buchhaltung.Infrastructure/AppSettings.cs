@@ -22,6 +22,10 @@ public sealed class AppSettings
 
     public bool FetchMail { get; set; }
 
+    /// <summary>Mail-Zeitraum: Tage vor der ersten und nach der letzten Buchung.</summary>
+    public int MailDaysBefore { get; set; } = 60;
+    public int MailDaysAfter { get; set; } = 30;
+
     public static string DataDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SonOG-Buchhaltung");
 

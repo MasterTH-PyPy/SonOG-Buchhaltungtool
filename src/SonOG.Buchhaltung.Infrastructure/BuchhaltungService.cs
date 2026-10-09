@@ -21,6 +21,8 @@ public sealed class ServiceOptions
     public DateOnly? OpenFrom { get; set; }
     public List<MailAccount> MailAccounts { get; set; } = new();
     public bool FetchMail { get; set; }
+    public int MailDaysBefore { get; set; } = 60;
+    public int MailDaysAfter { get; set; } = 30;
 }
 
 /// <summary>Ergebnis des Einlesens. Es wurde noch nichts geschrieben (Vorschau / Dry-Run).</summary>
@@ -119,6 +121,8 @@ public sealed class BuchhaltungService
         var reconciler = new PaymentReconciler(index, statement.Year, state.PaidExcluding(key));
         var reconcile = reconciler.Run(statement.Bookings, o.OpenFrom, statement.LastBookingDate);
 
+        MailReceiptFinder.DaysBefore = Math.Clamp(o.MailDaysBefore, 0, 730);
+        MailReceiptFinder.DaysAfter = Math.Clamp(o.MailDaysAfter, 0, 730);
         var mailLog = new List<string>();
         var mailProblems = new List<string>();
         var mailDir = MailReceiptFinder.MailFolder(_dataDir);

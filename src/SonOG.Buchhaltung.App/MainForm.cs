@@ -131,9 +131,11 @@ public sealed class MainForm : Form
         _btnPrint.Click += async (_, _) => await OnExportAsync(true);
         _btnMail.Click += (_, _) =>
         {
-            using var dlg = new MailAccountsForm(_settings.MailAccounts);
+            using var dlg = new MailAccountsForm(_settings.MailAccounts, _settings.MailDaysBefore, _settings.MailDaysAfter);
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
             _settings.MailAccounts = dlg.Result;
+            _settings.MailDaysBefore = dlg.DaysBefore;
+            _settings.MailDaysAfter = dlg.DaysAfter;
             try { _settings.Save(); } catch (IOException) { }
         };
         _btnRules.Click += (_, _) => OnOpenRules();
@@ -233,6 +235,8 @@ public sealed class MainForm : Form
         OutputFolder = _txtOutput.Text.Trim(),
         MailAccounts = _settings.MailAccounts,
         FetchMail = _chkMail.Checked && _settings.MailAccounts.Count > 0,
+        MailDaysBefore = _settings.MailDaysBefore,
+        MailDaysAfter = _settings.MailDaysAfter,
         OpenFrom = _chkOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value) : null,
     };
 

@@ -15,10 +15,14 @@ public sealed class MailAccountsForm : Form
     private readonly TextBox _folders = new() { Dock = DockStyle.Fill, Text = "INBOX" };
     private readonly CheckBox _enabled = new() { Text = "aktiv", Checked = true, AutoSize = true };
     private readonly Label _hint = new() { AutoSize = true, MaximumSize = new Size(560, 0) };
+    private readonly NumericUpDown _daysBefore = new() { Minimum = 0, Maximum = 730, Width = 70 };
+    private readonly NumericUpDown _daysAfter = new() { Minimum = 0, Maximum = 730, Width = 70 };
     private bool _loading;
 
-    public MailAccountsForm(List<MailAccount> accounts)
+    public MailAccountsForm(List<MailAccount> accounts, int daysBefore, int daysAfter)
     {
+        _daysBefore.Value = Math.Clamp(daysBefore, 0, 730);
+        _daysAfter.Value = Math.Clamp(daysAfter, 0, 730);
         _accounts = accounts.Select(a => new MailAccount
         {
             Name = a.Name, Host = a.Host, Port = a.Port, User = a.User, PasswordProtected = a.PasswordProtected,
@@ -56,6 +60,12 @@ public sealed class MailAccountsForm : Form
         Row("Passwort:", _password);
         Row("Ordner:", _folders);
         Row("", _enabled);
+        var range = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+        range.Controls.Add(_daysBefore);
+        range.Controls.Add(new Label { Text = "Tage vor und", AutoSize = true, Margin = new Padding(6, 6, 6, 0) });
+        range.Controls.Add(_daysAfter);
+        range.Controls.Add(new Label { Text = "Tage nach den Buchungen (gilt für alle Postfächer)", AutoSize = true, Margin = new Padding(6, 6, 0, 0) });
+        Row("Suchzeitraum:", range);
         _hint.Text = "web.de: imap.web.de, Port 993, in den web.de-Einstellungen IMAP-Zugriff erlauben.\n" +
                      "Gmail: imap.gmail.com, Port 993, 2-Faktor aktivieren und ein App-Passwort verwenden.\n" +
                      "Roundcube: IMAP-Server des eigenen Hosters.\n" +
@@ -109,6 +119,8 @@ public sealed class MailAccountsForm : Form
     }
 
     public List<MailAccount> Result => _accounts;
+    public int DaysBefore => (int)_daysBefore.Value;
+    public int DaysAfter => (int)_daysAfter.Value;
 
     private int _shown = -1;
 

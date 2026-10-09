@@ -17,8 +17,9 @@ namespace SonOG.Buchhaltung.Infrastructure.Mail;
 /// </summary>
 public static class MailReceiptFinder
 {
-    public const int DaysBefore = 60;
-    public const int DaysAfter = 30;
+    /// <summary>Zeitfenster der Mail-Suche in Tagen vor/nach der Buchung (in der Oberfläche einstellbar).</summary>
+    public static int DaysBefore { get; set; } = 60;
+    public static int DaysAfter { get; set; } = 30;
 
     private sealed record Candidate(DateTime Date, string Sender, List<MimePart> Pdfs, bool HasOtherAttachment);
 
