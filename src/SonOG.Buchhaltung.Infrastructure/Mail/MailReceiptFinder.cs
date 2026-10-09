@@ -18,7 +18,7 @@ namespace SonOG.Buchhaltung.Infrastructure.Mail;
 public static class MailReceiptFinder
 {
     public const int DaysBefore = 60;
-    public const int DaysAfter = 3;
+    public const int DaysAfter = 30;
 
     private sealed record Candidate(DateTime Date, string Sender, List<MimePart> Pdfs, bool HasOtherAttachment);
 

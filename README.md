@@ -95,7 +95,7 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   „Scan per OCR gelesen, Zahlen genau kontrollieren“. Ist die OCR nicht verfügbar, erscheint eine Warnung. **Nicht kompiliert/getestet**
   (kein Scan zur Hand); das Infrastructure-Projekt ist deshalb jetzt `net8.0-windows10.0.19041.0`.
 - **Mail-Anhänge:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
-  „Mails abrufen“. Beim Einlesen werden **alle PDF-Anhänge** der Mails im Zeitraum des Auszugs (60 Tage vor bis 3 Tage nach den
+  „Mails abrufen“. Beim Einlesen werden **alle PDF-Anhänge** der Mails im Zeitraum des Auszugs (60 Tage vor bis 30 Tage nach den
   Buchungen) geladen (nur lesend, nur die Anhänge) nach `%AppData%\SonOG-Buchhaltung\mail` und wie der Eingangsordner
   nach **Inhalt** abgeglichen (Amazon: Bestellnummer + Betrag; sonstige: Betrag + Rechnungsnummer oder Name; Scans per OCR).
   Danach sucht eine Nachsuche für Buchungen ohne Beleg gezielt nach Mails des Absenders/Betreffs und meldet z. B. „Mail gefunden,
