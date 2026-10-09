@@ -119,7 +119,22 @@ public sealed class BuchhaltungService
         var reconciler = new PaymentReconciler(index, statement.Year, state.PaidExcluding(key));
         var reconcile = reconciler.Run(statement.Bookings, o.OpenFrom, statement.LastBookingDate);
 
+        var mailLog = new List<string>();
+        var mailProblems = new List<string>();
+        var mailDir = MailReceiptFinder.MailFolder(_dataDir);
+        if (o.FetchMail && o.MailAccounts.Count > 0)
+        {
+            // Alle PDF-Anhänge im Zeitraum laden; sie werden danach wie der Eingangsordner nach Inhalt abgeglichen.
+            var from = statement.Bookings.Min(b => b.Date).AddDays(-MailReceiptFinder.DaysBefore);
+            var to = (statement.LastBookingDate ?? DateOnly.FromDateTime(DateTime.Today)).AddDays(MailReceiptFinder.DaysAfter);
+            progress?.Report("Mail-Anhänge laden ...");
+            var dl = MailDownloader.Run(o.MailAccounts, from, to, mailDir, mailProblems, mailLog, progress, ct);
+            warnings.Add($"Mail: {dl.MailsChecked} Mails geprüft, {dl.Downloaded} PDF-Anhang/Anhänge neu geladen ({dl.AlreadyThere} schon vorhanden).");
+        }
+
         var receiptFolders = new List<string>();
+        if (o.FetchMail && Directory.Exists(mailDir) && Directory.EnumerateFiles(mailDir, "*.pdf", SearchOption.AllDirectories).Any())
+            receiptFolders.Add(mailDir);
         if (!string.IsNullOrWhiteSpace(o.EingangFolder) && Directory.Exists(o.EingangFolder)) receiptFolders.Add(o.EingangFolder);
 
         if (receiptFolders.Count > 0)
@@ -151,12 +166,12 @@ public sealed class BuchhaltungService
         if (o.FetchMail && o.MailAccounts.Count > 0)
         {
             var before = statement.Bookings.Count(b => b.ReceiptFiles.Count > 0);
-            var mailLog = new List<string>();
-            var problems = MailReceiptFinder.Run(o.MailAccounts, statement.Bookings, MailReceiptFinder.MailFolder(_dataDir), progress, ct, mailLog);
+            var problems = MailReceiptFinder.Run(o.MailAccounts, statement.Bookings, mailDir, progress, ct, mailLog);
+            problems.AddRange(mailProblems);
             var logPath = Path.Combine(_dataDir, "mail-protokoll.txt");
             try { File.WriteAllLines(logPath, mailLog.Concat(problems)); warnings.Add("Mail-Protokoll: " + logPath); } catch (IOException) { }
             int found = statement.Bookings.Count(b => b.ReceiptFiles.Count > 0) - before;
-            warnings.Add($"Mail-Suche: {found} Beleg(e) in den Postfächern gefunden (bitte prüfen, im Druckdialog abwählbar).");
+            warnings.Add($"Mail-Nachsuche je Buchung (Absender/Betreff): {found} weitere(r) Beleg(e) (bitte prüfen, im Druckdialog abwählbar).");
             warnings.AddRange(problems.Take(5));
         }
 

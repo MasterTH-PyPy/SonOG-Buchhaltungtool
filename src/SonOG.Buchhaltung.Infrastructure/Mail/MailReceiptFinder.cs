@@ -71,7 +71,7 @@ public static class MailReceiptFinder
     }
 
     /// <summary>Verbindet mit kurzem Timeout; schlägt der eingestellte Port fehl, wird der andere übliche IMAP-Port versucht (993 SSL / 143 STARTTLS).</summary>
-    private static ImapClient Open(MailAccount acc, CancellationToken ct, out string how)
+    internal static ImapClient Open(MailAccount acc, CancellationToken ct, out string how)
     {
         var attempts = new List<(int Port, SecureSocketOptions Mode)>
         {

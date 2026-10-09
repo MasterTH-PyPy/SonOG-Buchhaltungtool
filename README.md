@@ -94,11 +94,12 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   (Windows.Media.Ocr, Sprachpaket Deutsch nötig) gelesen, die ersten 3 Seiten. Treffer aus OCR tragen den Hinweis
   „Scan per OCR gelesen, Zahlen genau kontrollieren“. Ist die OCR nicht verfügbar, erscheint eine Warnung. **Nicht kompiliert/getestet**
   (kein Scan zur Hand); das Infrastructure-Projekt ist deshalb jetzt `net8.0-windows10.0.19041.0`.
-- **Mail-Suche:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
-  „Mails abrufen“. Nur für Buchungen **ohne Beleg**: Es wird in einem kleinen Zeitfenster (60 Tage vor bis 3 Tage nach der
-  Buchung) nach einer Mail gesucht, deren Absender/Betreff den Shop-/Verkäufernamen aus dem Buchungstext enthält (bei Amazon
-  auch die Bestellnummer im Text). Hat die Mail ein PDF, wird es nach `%AppData%\SonOG-Buchhaltung\mail` geladen und nur zugeordnet,
-  wenn der Betrag im PDF steht (Rechnungsnummer aus dem Buchungstext zusätzlich bevorzugt); ohne Anhang steht ein Hinweis in der Tabelle.
-  Alles nur lesend. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`. Vor dem Druck zeigt ein Dialog alle
-  Belege (Mail-Funde gelb) und lässt falsche abwählen. Der Mail-Code (MailKit) ist nicht gegen ein echtes Postfach getestet.
+- **Mail-Anhänge:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
+  „Mails abrufen“. Beim Einlesen werden **alle PDF-Anhänge** der Mails im Zeitraum des Auszugs (60 Tage vor bis 3 Tage nach den
+  Buchungen) geladen (nur lesend, nur die Anhänge) nach `%AppData%\SonOG-Buchhaltung\mail` und wie der Eingangsordner
+  nach **Inhalt** abgeglichen (Amazon: Bestellnummer + Betrag; sonstige: Betrag + Rechnungsnummer oder Name; Scans per OCR).
+  Danach sucht eine Nachsuche für Buchungen ohne Beleg gezielt nach Mails des Absenders/Betreffs und meldet z. B. „Mail gefunden,
+  aber ohne Anhang“. Alles mit „bitte prüfen“; vor dem Druck lassen sich falsche Belege abwählen. Protokoll:
+  `%AppData%\SonOG-Buchhaltung\mail-protokoll.txt`. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`.
+  Der Mail-Code (MailKit) ist nicht gegen ein echtes Postfach getestet.
 - Echte Kontoauszüge, Rechnungen und Excel-Ausgaben sind per `.gitignore` vom Repo ausgeschlossen.
