@@ -65,10 +65,24 @@ public sealed class MailAccountsForm : Form
         form.Controls.Add(_hint, 1, form.RowCount++);
 
         var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 48, Padding = new Padding(8) };
+        var test = new Button { Text = "Verbindung testen", AutoSize = true, MinimumSize = new Size(140, 30) };
+        test.Click += async (_, _) =>
+        {
+            Commit();
+            if (_shown < 0 || _shown >= _accounts.Count) return;
+            var a = _accounts[_shown];
+            test.Enabled = false;
+            test.Text = "Teste ...";
+            var msg = await Task.Run(() => SonOG.Buchhaltung.Infrastructure.Mail.MailReceiptFinder.TestConnection(a));
+            test.Text = "Verbindung testen";
+            test.Enabled = true;
+            MessageBox.Show(this, msg, "Verbindungstest");
+        };
         var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(90, 30) };
         var cancel = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel, AutoSize = true, MinimumSize = new Size(90, 30) };
         bottom.Controls.Add(cancel);
         bottom.Controls.Add(ok);
+        bottom.Controls.Add(test);
         AcceptButton = ok;
         CancelButton = cancel;
 

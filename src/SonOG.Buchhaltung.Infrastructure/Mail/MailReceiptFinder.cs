@@ -36,9 +36,8 @@ public static class MailReceiptFinder
         {
             try
             {
-                using var client = new ImapClient();
-                client.Connect(acc.Host, acc.Port, acc.Port == 143 ? SecureSocketOptions.StartTls : SecureSocketOptions.SslOnConnect, ct);
-                client.Authenticate(acc.User, acc.GetPassword(), ct);
+                using var client = Open(acc, ct, out var how);
+                log?.Add($"Verbindung {acc.Name}: {how}");
                 var dir = Path.Combine(targetRoot, Safe(acc.Name.Length > 0 ? acc.Name : acc.Host));
                 Directory.CreateDirectory(dir);
 
@@ -69,6 +68,58 @@ public static class MailReceiptFinder
             }
         }
         return problems;
+    }
+
+    /// <summary>Verbindet mit kurzem Timeout; schlägt der eingestellte Port fehl, wird der andere übliche IMAP-Port versucht (993 SSL / 143 STARTTLS).</summary>
+    private static ImapClient Open(MailAccount acc, CancellationToken ct, out string how)
+    {
+        var attempts = new List<(int Port, SecureSocketOptions Mode)>
+        {
+            acc.Port == 143 ? (143, SecureSocketOptions.StartTls) : (acc.Port, SecureSocketOptions.SslOnConnect),
+            acc.Port == 143 ? (993, SecureSocketOptions.SslOnConnect) : (143, SecureSocketOptions.StartTls),
+        };
+        var errors = new List<string>();
+        foreach (var (port, mode) in attempts)
+        {
+            var client = new ImapClient { Timeout = 20000 };
+            try
+            {
+                client.Connect(acc.Host, port, mode, ct);
+                client.Authenticate(acc.User, acc.GetPassword(), ct);
+                how = $"Port {port} ({mode})";
+                return client;
+            }
+            catch (MailKit.Security.AuthenticationException)
+            {
+                client.Dispose();
+                throw new InvalidOperationException("Anmeldung abgelehnt - Benutzername/Passwort prüfen, bei web.de IMAP-Zugriff erlauben und ggf. ein anwendungsspezifisches Passwort verwenden.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                client.Dispose();
+                errors.Add($"Port {port}: {ex.Message}");
+            }
+        }
+        throw new InvalidOperationException("Keine Verbindung zu " + acc.Host + " möglich (" + string.Join(" | ", errors) +
+                                            "). Wahrscheinlich blockiert Firewall/Proxy/Virenscanner die IMAP-Ports 993 und 143.");
+    }
+
+    /// <summary>Für den Button "Verbindung testen". Gibt eine lesbare Meldung zurück.</summary>
+    public static string TestConnection(MailAccount acc)
+    {
+        try
+        {
+            using var client = Open(acc, CancellationToken.None, out var how);
+            var inbox = client.Inbox;
+            inbox.Open(FolderAccess.ReadOnly);
+            var n = inbox.Count;
+            client.Disconnect(true);
+            return $"Verbindung ok ({how}). Posteingang: {n} Mails.";
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
     }
 
     private static void FindFor(Booking b, IMailFolder folder, string dir, CancellationToken ct, List<string>? log, string where)
