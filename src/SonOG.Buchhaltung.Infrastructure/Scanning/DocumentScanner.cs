@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using SonOG.Buchhaltung.Core.Invoices;
 using SonOG.Buchhaltung.Core.Matching;
 using SonOG.Buchhaltung.Core.Rules;
+using SonOG.Buchhaltung.Infrastructure.Ocr;
 using SonOG.Buchhaltung.Infrastructure.Pdf;
 
 namespace SonOG.Buchhaltung.Infrastructure.Scanning;
@@ -41,6 +42,7 @@ public sealed class DocumentScanner
         public List<decimal> AllAmounts { get; set; } = new();
         public string SearchText { get; set; } = "";
         public bool IsScan { get; set; }
+        public bool FromOcr { get; set; }
     }
 
     private readonly string _cacheDir;
@@ -114,7 +116,7 @@ public sealed class DocumentScanner
 
     public ScanResult<ReceiptDocument> ScanReceipts(string folder, IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(_cacheDir, "belege4.cache.json");
+        var cachePath = Path.Combine(_cacheDir, "belege5.cache.json");
         var cache = LoadCache<ReceiptCacheEntry>(cachePath);
         var fresh = new ConcurrentDictionary<string, ReceiptCacheEntry>();
 
@@ -123,6 +125,7 @@ public sealed class DocumentScanner
         var docs = new ConcurrentBag<ReceiptDocument>();
         var problems = new ConcurrentBag<string>();
         int done = 0;
+        bool ocrWarned = false;
 
         Parallel.ForEach(files, new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1) }, file =>
         {
@@ -137,6 +140,22 @@ public sealed class DocumentScanner
                 try
                 {
                     var text = PdfWordReader.ReadAllText(file);
+                    bool fromOcr = false;
+                    if (text.Count(char.IsLetterOrDigit) < 40)
+                    {
+                        // Scan ohne Textebene: Windows-OCR versuchen
+                        var why = WindowsOcr.Unavailable();
+                        if (why is null)
+                        {
+                            try
+                            {
+                                var ocr = WindowsOcr.ReadPdf(file);
+                                if (ocr.Count(char.IsLetterOrDigit) >= 40) { text = ocr; fromOcr = true; }
+                            }
+                            catch (Exception ex) { problems.Add($"{Path.GetFileName(file)}: OCR fehlgeschlagen: {ex.Message}"); }
+                        }
+                        else if (!ocrWarned) { ocrWarned = true; problems.Add(why); }
+                    }
                     var (kind, amount) = AmazonMatcher.Analyze(text, file);
                     entry = new ReceiptCacheEntry
                     {
@@ -148,6 +167,7 @@ public sealed class DocumentScanner
                         AllAmounts = AmazonMatcher.FindAmounts(text).ToList(),
                         SearchText = Flatten(text),
                         IsScan = text.Count(char.IsLetterOrDigit) < 40,
+                        FromOcr = fromOcr,
                     };
                 }
                 catch (Exception ex)
@@ -157,7 +177,7 @@ public sealed class DocumentScanner
                 }
             }
             fresh[file] = entry;
-            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount, entry.AllAmounts, entry.SearchText, entry.IsScan));
+            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount, entry.AllAmounts, entry.SearchText, entry.IsScan, entry.FromOcr));
 
             var n = Interlocked.Increment(ref done);
             if (n % 50 == 0) progress?.Report($"Belege lesen: {n} / {files.Count}");

@@ -41,7 +41,7 @@ public static class InboundMatcher
                 b.ReceiptNote = "Eingangsrechnung " + Path.GetFileName(best.Doc.FilePath) + ": " +
                     (best.RefHit && best.AmountHit ? "Rechnungsnummer und Betrag gefunden"
                      : best.RefHit ? "Rechnungsnummer gefunden, Betrag nicht"
-                     : "Betrag und Name gefunden") + " - bitte prüfen" +
+                     : "Betrag und Name gefunden") + " - bitte prüfen" + (best.Doc.FromOcr ? " (Scan per OCR gelesen, Zahlen genau kontrollieren)" : "") +
                     (good.Count > 1 ? $" ({good.Count} mögliche Belege)" : "");
                 continue;
             }

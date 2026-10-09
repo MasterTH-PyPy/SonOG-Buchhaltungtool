@@ -89,7 +89,10 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   die PdfPig-Textausgabe aber noch nicht auf Windows.
 - **Eingangsordner, sonstige Lieferanten:** Zugeordnet wird, wenn die im Buchungstext genannte Rechnungsnummer im PDF steht,
   oder wenn Betrag und Shop-/Verkäufername im PDF stehen. Nur der Betrag allein ergibt einen Hinweis, keine Zuordnung.
-- **Scans / OCR:** Eingescannte PDFs ohne Textebene werden erkannt und gemeldet, aber noch nicht gelesen (keine OCR).
+- **Scans / OCR:** Eingescannte PDFs ohne Textebene (Eingangsordner) werden mit der in Windows eingebauten Texterkennung
+  (Windows.Media.Ocr, Sprachpaket Deutsch nötig) gelesen, die ersten 3 Seiten. Treffer aus OCR tragen den Hinweis
+  „Scan per OCR gelesen, Zahlen genau kontrollieren“. Ist die OCR nicht verfügbar, erscheint eine Warnung. **Nicht kompiliert/getestet**
+  (kein Scan zur Hand); das Infrastructure-Projekt ist deshalb jetzt `net8.0-windows10.0.19041.0`.
 - **Mail-Suche:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
   „Mails abrufen“. Nur für Buchungen **ohne Beleg**: Es wird in einem kleinen Zeitfenster (60 Tage vor bis 3 Tage nach der
   Buchung) nach einer Mail gesucht, deren Absender/Betreff den Shop-/Verkäufernamen aus dem Buchungstext enthält (bei Amazon

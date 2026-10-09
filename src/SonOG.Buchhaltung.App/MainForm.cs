@@ -17,7 +17,8 @@ public sealed class MainForm : Form
     private readonly TextBox _txtInvoices = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtEingang = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtOutput = new() { Dock = DockStyle.Fill };
-    private readonly DateTimePicker _dtOpenFrom = new() { ShowCheckBox = true, Format = DateTimePickerFormat.Short, Width = 140, MinimumSize = new System.Drawing.Size(140, 0), Anchor = AnchorStyles.Left };
+    private readonly CheckBox _chkOpenFrom = new() { Text = "nur ab", AutoSize = true, Margin = new Padding(3, 5, 6, 3) };
+    private readonly DateTimePicker _dtOpenFrom = new() { Format = DateTimePickerFormat.Short, Width = 130, Enabled = false };
     private readonly CheckBox _chkOnlyReview = new() { Text = "Nur Prüffälle anzeigen", AutoSize = true };
     private readonly CheckBox _chkPrint = new() { Text = "Druckpaket erstellen", AutoSize = true, Checked = true };
 
@@ -57,7 +58,7 @@ public sealed class MainForm : Form
     private void BuildLayout()
     {
         var inputs = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, Padding = new Padding(8, 8, 8, 0) };
-        inputs.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
@@ -67,8 +68,12 @@ public sealed class MainForm : Form
         AddPathRow(inputs, "Ausgabeordner:", _txtOutput, () => BrowseFolder(_txtOutput, "Ausgabeordner"));
 
         inputs.RowCount++;
-        inputs.Controls.Add(new Label { Text = "Offene Rechnungen ab:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 6) }, 0, inputs.RowCount - 1);
-        inputs.Controls.Add(_dtOpenFrom, 1, inputs.RowCount - 1);
+        inputs.Controls.Add(new Label { Text = "Offene Rechnungen:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 6) }, 0, inputs.RowCount - 1);
+        var openFrom = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0), Anchor = AnchorStyles.Left };
+        openFrom.Controls.Add(_chkOpenFrom);
+        openFrom.Controls.Add(_dtOpenFrom);
+        inputs.Controls.Add(openFrom, 1, inputs.RowCount - 1);
+        _chkOpenFrom.CheckedChanged += (_, _) => _dtOpenFrom.Enabled = _chkOpenFrom.Checked;
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
         buttons.Controls.AddRange(new Control[] { _btnLoad, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnMail, _chkMail, _btnRules, _btnRelease, _chkOnlyReview });
@@ -200,12 +205,12 @@ public sealed class MainForm : Form
         if (DateOnly.TryParse(_settings.OpenFrom, out var d))
         {
             _dtOpenFrom.Value = d.ToDateTime(TimeOnly.MinValue);
-            _dtOpenFrom.Checked = true;
+            _chkOpenFrom.Checked = true;
         }
         else
         {
             _dtOpenFrom.Value = new DateTime(DateTime.Today.Year, 1, 1);
-            _dtOpenFrom.Checked = false;
+            _chkOpenFrom.Checked = false;
         }
     }
 
@@ -216,7 +221,7 @@ public sealed class MainForm : Form
         _settings.EingangFolder = _txtEingang.Text.Trim();
         _settings.OutputFolder = _txtOutput.Text.Trim();
         _settings.FetchMail = _chkMail.Checked;
-        _settings.OpenFrom = _dtOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value).ToString("yyyy-MM-dd") : "";
+        _settings.OpenFrom = _chkOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value).ToString("yyyy-MM-dd") : "";
         try { _settings.Save(); } catch (IOException) { }
     }
 
@@ -228,7 +233,7 @@ public sealed class MainForm : Form
         OutputFolder = _txtOutput.Text.Trim(),
         MailAccounts = _settings.MailAccounts,
         FetchMail = _chkMail.Checked && _settings.MailAccounts.Count > 0,
-        OpenFrom = _dtOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value) : null,
+        OpenFrom = _chkOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value) : null,
     };
 
     private void BrowseFile(TextBox target, string filter)

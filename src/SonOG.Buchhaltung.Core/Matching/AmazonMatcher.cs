@@ -25,7 +25,8 @@ public sealed record ReceiptDocument(
     decimal? Amount = null,
     IReadOnlyList<decimal>? AllAmounts = null,
     string SearchText = "",
-    bool IsScan = false)
+    bool IsScan = false,
+    bool FromOcr = false)
 {
     /// <summary>Betrag, der auf dem Konto erscheint: Rechnung 62,70 → -62,70; Gutschrift -20,05 → +20,05.</summary>
     public decimal? BookingAmount => Amount is null ? null : -Amount.Value;
