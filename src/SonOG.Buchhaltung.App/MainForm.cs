@@ -25,7 +25,7 @@ public sealed class MainForm : Form
     private readonly Button _btnAccept = new() { Text = "Vorschlag übernehmen", AutoSize = true };
     private readonly Button _btnAttach = new() { Text = "Beleg zuordnen ...", AutoSize = true };
     private readonly Button _btnExport = new() { Text = "Exportieren ...", AutoSize = true };
-    private readonly Button _btnPrint = new() { Text = "Drucken (rückwärts) ...", AutoSize = true };
+    private readonly Button _btnPrint = new() { Text = "Drucken (rückwärts) – Vorschau ...", AutoSize = true };
     private readonly CheckBox _chkMail = new() { Text = "Mails abrufen", AutoSize = true };
     private readonly Button _btnMail = new() { Text = "Mail-Postfächer ...", AutoSize = true };
     private readonly Button _btnRules = new() { Text = "Regeln öffnen", AutoSize = true };
@@ -338,7 +338,7 @@ public sealed class MainForm : Form
 
             if (printNow && result.PrintPackage is not null)
             {
-                _lblStatus.Text = "Druckpaket wird an den Drucker gesendet ...";
+                _lblStatus.Text = "Druckpaket wird im PDF-Programm geöffnet ...";
                 PrintPdf(result.PrintPackage);
                 return;
             }
@@ -360,17 +360,10 @@ public sealed class MainForm : Form
         }
     }
 
-    /// <summary>Schickt das PDF über das Windows-Druckverb an den Standarddrucker; klappt das nicht, wird es zum Drucken geöffnet.</summary>
+    /// <summary>Öffnet das Druckpaket im Standard-PDF-Programm; gedruckt wird von dort aus (Strg+P).</summary>
     private void PrintPdf(string path)
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo(path) { Verb = "print", UseShellExecute = true, CreateNoWindow = true });
-        }
-        catch (Exception)
-        {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        }
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
     private void OnOpenRules()
