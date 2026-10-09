@@ -13,6 +13,9 @@ WinForms-Werkzeug (.NET 8) für die Firmenbuchhaltung:
    (Entgeltabrechnung) bekommen die Nummer der Entgelt-Buchung und werden direkt hinter deren Seite einsortiert. Der Button **Drucken (rückwärts) – Vorschau** exportiert und öffnet das PDF
    im Standard-PDF-Programm; dort siehst du genau, was gedruckt würde, und druckst mit Strg+P.
 5. **Excel-Liste** mit Status je Buchung, offene Rechnungen (für Mahnungen) und Zusammenfassung.
+6. **Kontieren** (Reiter 2) – je Buchung Personenkonto, Sachkonto(en), BU-Schlüssel, Splitbuchungen; Vorschläge aus Regeln.
+7. **Taxpool-Importdatei** – DATEV-Buchungsstapel (`EXTF_….csv`), den Taxpool-Buchhalter einliest.
+8. **Sollstellung** (eigener Reiter) – Ausgangsrechnungen eines Monats als Forderung auf die Debitoren.
 
 Beleglose Buchungen (Steuern, Bankentgelte, Privates …) bekommen ebenfalls eine Nummer, werden mit `BL` markiert und
 verlangen keinen Beleg.
@@ -51,6 +54,52 @@ zurückgenommen wurden. Dort steht auch, welche Rechnungen schon bezahlt sind (D
 > **Signatur:** Der Sparkassen-Auszug ist qualifiziert signiert. Die gestempelte Kopie ist es nicht mehr –
 > das unveränderte Original separat archivieren.
 
+## Schritt 2: Kontieren
+
+Nach dem Einlesen (Schritt 1) steht jede Buchung im Reiter **2 · Kontieren** mit einem Vorschlag. Gelb = Vorschlag,
+grün = bestätigt, rot = Fehler (z. B. Summe der Zeilen ≠ Buchungsbetrag, Sachkonto fehlt). Alles ist je Buchung änderbar und
+wird sofort gespeichert (`kontierung\<Auszug>.json`); beim erneuten Einlesen desselben Auszugs bleibt es erhalten.
+
+Drei Arten zu buchen (Doppik mit Personenkonten):
+
+| Personenkonto | „Beleg einbuchen“ | Buchungssätze |
+|---|---|---|
+| keins | – | Bank an/gegen Sachkonto je Zeile (Bankentgelt, Finanzamt, Privat …) |
+| Kreditor/Debitor | an | je Zeile: Sachkonto an Kreditor (bzw. Debitor an Erlös), Rechnungsdatum als Belegdatum; dann Zahlung: Kreditor an Bank |
+| Debitor/Kreditor | aus | Ausgleich offener Posten: Bank an Debitor je Rechnung (Rechnungsnummer in Belegfeld 1, laufende Nummer in Belegfeld 2) |
+
+**Splitbuchungen:** „+ Zeile (Rest)“ legt eine Zeile mit dem Restbetrag an, z. B. eine Amazon-Zahlung mit 100,00 auf 3400 und
+50,00 auf 1800. Die Summe der Zeilen muss dem Betrag im Kontoauszug entsprechen.
+
+**Vorschläge** (Reihenfolge): Kundenzahlung mit erkannten Rechnungen → Debitor, je Rechnung eine Zeile · erste passende Regel
+(Stichwort im Buchungstext, Kategorie, Richtung) · Personenkonto per Suchbegriff mit Standard-Sachkonto · sonst offen.
+„Als Regel speichern …“ macht aus der aktuellen Kontierung eine Regel; „Vorschläge neu“ wendet neue Regeln auf alle noch
+nicht bestätigten und nicht von Hand bearbeiteten Buchungen an.
+
+**Aus Taxpool einlesen …** übernimmt CSV-Exporte aus Taxpool, Spalten werden über die Überschrift erkannt:
+Kontenplan (Konto + Bezeichnung → Kontonamen, Personenkonten → Debitoren/Kreditoren) und Buchungsvorlagen
+(Konto + Gegenkonto + BU + Buchungstext → Vorlage, die man je Buchung anwenden oder mit Stichwort zur Regel machen kann).
+
+## Schritt 3: Importdatei für Taxpool
+
+**3 · Taxpool-Importdatei erzeugen …** schreibt `EXTF_Kontoauszug_<Auszug>.csv` (DATEV-Buchungsstapel, Version 700/13,
+Windows-1252) in den Ausgabeordner, dazu `Personenkonten_….csv` mit den verwendeten Debitoren/Kreditoren. Voraussetzung:
+Die Nummern sind in Schritt 1 endgültig vergeben (Export). Bei Fehlern wird keine Datei geschrieben; ein zweiter Export
+desselben Auszugs wird gewarnt (doppelter Import). Die Buchungen werden nicht festgeschrieben.
+
+## Sollstellung der Ausgangsrechnungen
+
+Eigener Reiter, unabhängig vom Kontoauszug: Monat wählen, **Rechnungen laden** (CAO-Ordner aus Schritt 1). Jede Rechnung
+des Monats wird Debitor an Erlöskonto (Standard 8400, Automatikkonto) mit Rechnungsdatum und Rechnungsnummer gebucht.
+Debitoren werden über den Empfängernamen gefunden oder mit **Debitor anlegen …** angelegt. Exportierte Rechnungen merkt sich
+`sollstellung.json`; sie werden grau angezeigt und nicht noch einmal übergeben (**Monat freigeben …** nimmt das zurück).
+
+## Einstellungen (`buchhaltung.json`, `personenkonten.json`)
+
+Standard ist SKR03: Bank 1200, Debitoren 10000–69999, Kreditoren 70000–99999, Sachkontenlänge 4, Berater 1001, Mandant 1.
+Bei SKR04 Kontenrahmen `"04"` und Bank `1800` eintragen, Regeln anpassen. Button **Einstellungen / Regeln öffnen** im Reiter 2.
+`rechnungsnummerInBelegfeld1BeiAusgleich` steuert, wo beim OP-Ausgleich die Rechnungsnummer steht.
+
 ## Abgleich von Kundenzahlungen
 
 | Status | Bedeutung |
@@ -78,7 +127,15 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   `betragStichwoerter` (die unterste Zeile mit einem dieser Wörter liefert den Betrag),
   `empfaenger` (Rechteck in Punkt, links oben = 0/0, in dem die Anschrift steht), `datumRegex`.
 
+## Icon
+
+`tools/make_icon.py` (Pillow) erzeugt `src/SonOG.Buchhaltung.App/Resources/app.ico` in allen Windows-Größen.
+
 ## Stand / bekannte Lücken
+
+- Skonto/Differenzen bei Kundenzahlungen: der Rest bleibt auf dem Debitor und wird in Taxpool ausgebucht (oder Zeile aufteilen).
+- Sollstellung mit mehreren Steuersätzen je Rechnung: nur ein Erlöskonto je Rechnung.
+- Spaltennamen der Taxpool-Exporte sind über Synonyme erkannt; bei einem anderen Layout eine Beispieldatei prüfen.
 
 - Der Parser für den Sparkassen-Kontoauszug ist an einem echten Auszug (87 Buchungen, Saldo stimmt) geprüft.
 - **Das Layout der CAO-Rechnungs-PDFs wurde noch nicht gesehen.** Betrag und Empfänger werden über die Einstellungen
