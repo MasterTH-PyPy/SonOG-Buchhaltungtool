@@ -119,24 +119,8 @@ public sealed class BuchhaltungService
         var reconciler = new PaymentReconciler(index, statement.Year, state.PaidExcluding(key));
         var reconcile = reconciler.Run(statement.Bookings, o.OpenFrom, statement.LastBookingDate);
 
-        // Belege aus Mail-Postfächern holen (nur lesen) und zusammen mit dem Amazon-/Belegordner auswerten
-        var mailDir = MailFetcher.MailFolder(_dataDir);
-        if (o.FetchMail)
-        {
-            var from = statement.Bookings.Min(b => b.Date).AddDays(-60);
-            var to = (statement.LastBookingDate ?? DateOnly.FromDateTime(DateTime.Today)).AddDays(7);
-            foreach (var acc in o.MailAccounts.Where(a => a.Enabled && a.Host.Length > 0))
-            {
-                progress?.Report($"Mails abrufen: {acc.Name} ...");
-                var fetched = MailFetcher.Fetch(acc, from, to, mailDir, progress, ct);
-                warnings.Add($"Mail {acc.Name}: {fetched.MessagesChecked} Mails geprüft, {fetched.Downloaded} PDF(s) neu geladen.");
-                warnings.AddRange(fetched.Errors.Take(3));
-            }
-        }
-
         var receiptFolders = new List<string>();
         if (!string.IsNullOrWhiteSpace(o.AmazonFolder) && Directory.Exists(o.AmazonFolder)) receiptFolders.Add(o.AmazonFolder);
-        if (Directory.Exists(mailDir) && Directory.EnumerateFiles(mailDir, "*.pdf", SearchOption.AllDirectories).Any()) receiptFolders.Add(mailDir);
 
         if (receiptFolders.Count > 0)
         {
@@ -151,12 +135,21 @@ public sealed class BuchhaltungService
             var assigned = AmazonMatcher.Assign(statement.Bookings, allReceipts);
             if (assigned.UnusedDocuments.Count > 0)
                 warnings.Add($"{assigned.UnusedDocuments.Count} Amazon-Beleg(e) im Ordner gehören zu keiner Buchung dieses Auszugs (z. B. andere Monate).");
-            GenericReceiptMatcher.Assign(statement.Bookings, allReceipts);
         }
         else
         {
             foreach (var b in statement.Bookings.Where(b => b.Category.IsAmazon() && !b.Beleglos))
                 b.ReceiptNote = "Kein Amazon-Belegordner angegeben";
+        }
+
+        // Für Buchungen ohne Beleg: Mail-Postfächer nach einer Mail des Shops/Verkäufers (kleines Zeitfenster) mit PDF-Anhang durchsuchen
+        if (o.FetchMail && o.MailAccounts.Count > 0)
+        {
+            var before = statement.Bookings.Count(b => b.ReceiptFiles.Count > 0);
+            var problems = MailReceiptFinder.Run(o.MailAccounts, statement.Bookings, MailReceiptFinder.MailFolder(_dataDir), progress, ct);
+            int found = statement.Bookings.Count(b => b.ReceiptFiles.Count > 0) - before;
+            warnings.Add($"Mail-Suche: {found} Beleg(e) in den Postfächern gefunden (bitte prüfen, im Druckdialog abwählbar).");
+            warnings.AddRange(problems.Take(5));
         }
 
         var session = new BuchhaltungSession

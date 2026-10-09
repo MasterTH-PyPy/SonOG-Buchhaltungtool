@@ -86,10 +86,11 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   Betragsprüfung. Rechnungen von Marktplatz-Verkäufern ohne lesbaren Betrag werden nur zugeordnet, wenn die
   Bestellübersicht denselben Betrag zeigt (Hinweis „bitte prüfen“). Das Layout wurde an einem Wochenexport geprüft,
   die PdfPig-Textausgabe aber noch nicht auf Windows.
-- **Mail-Abruf:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
-  „Mails abrufen“. Geladen werden PDF-Anhänge der Mails im Zeitraum des Auszugs (60 Tage davor bis 7 Tage danach),
-  nur lesend, nach `%AppData%\SonOG-Buchhaltung\mail`. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`.
-  Amazon-Rechnungen aus Mails werden wie die aus dem Amazon-Ordner über Bestellnummer und Betrag zugeordnet;
-  sonstige Ausgaben nur, wenn genau ein Beleg den Betrag enthält (immer mit „bitte prüfen“).
-  Der Mail-Code (MailKit) ist hier nicht kompiliert oder gegen ein echtes Postfach getestet.
+- **Mail-Suche:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
+  „Mails abrufen“. Nur für Buchungen **ohne Beleg**: Es wird in einem kleinen Zeitfenster (60 Tage vor bis 3 Tage nach der
+  Buchung) nach einer Mail gesucht, deren Absender/Betreff den Shop-/Verkäufernamen aus dem Buchungstext enthält (bei Amazon
+  auch die Bestellnummer im Text). Hat die Mail ein PDF, wird es nach `%AppData%\SonOG-Buchhaltung\mail` geladen und mit
+  Rechnungsnummer (aus dem Buchungstext) und/oder Betrag abgeglichen; ohne Anhang steht ein Hinweis in der Tabelle.
+  Alles nur lesend. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`. Vor dem Druck zeigt ein Dialog alle
+  Belege (Mail-Funde gelb) und lässt falsche abwählen. Der Mail-Code (MailKit) ist nicht gegen ein echtes Postfach getestet.
 - Echte Kontoauszüge, Rechnungen und Excel-Ausgaben sind per `.gitignore` vom Repo ausgeschlossen.

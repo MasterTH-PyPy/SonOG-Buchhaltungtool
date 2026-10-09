@@ -477,35 +477,19 @@ public class PaymentReconcilerTests
     }
 
     [Fact]
-    public void Other_expense_gets_unique_mail_receipt_by_amount()
+    public void Merchant_keywords_skip_legal_forms_and_noise()
     {
-        var b = Fx.Classify("Lastschrift", -119.00m, "Musterfirma GmbH Rechnung 4711");
-        var docs = new[]
-        {
-            new ReceiptDocument("m/a.pdf", new string[0], ReceiptKind.Rechnung, null, new[] { 100.00m, 19.00m, 119.00m }),
-            new ReceiptDocument("m/b.pdf", new string[0], ReceiptKind.Rechnung, null, new[] { 50.00m }),
-        };
-
-        GenericReceiptMatcher.Assign(new[] { b }, docs);
-
-        Assert.Equal(new[] { "m/a.pdf" }, b.ReceiptFiles.ToArray());
-        Assert.Contains("prüfen", b.ReceiptNote);
+        var k = MerchantKeywords.Extract("Musterfirma GmbH SEPA Lastschrift Rechnung 4711 DE12 3456");
+        Assert.Equal(new[] { "Musterfirma" }, k.ToArray());
+        var two = MerchantKeywords.Extract("Beispiel-Verlag Online Shop abcd1234");
+        Assert.Equal(new[] { "Beispiel-Verlag", "Shop" }, two.ToArray());
     }
 
     [Fact]
-    public void Ambiguous_mail_receipts_are_not_attached()
+    public void Reference_numbers_are_read_from_booking_text()
     {
-        var b = Fx.Classify("Lastschrift", -20.00m, "Musterfirma GmbH");
-        var docs = new[]
-        {
-            new ReceiptDocument("m/a.pdf", new string[0], ReceiptKind.Rechnung, null, new[] { 20.00m }),
-            new ReceiptDocument("m/b.pdf", new string[0], ReceiptKind.Rechnung, null, new[] { 20.00m, 3.00m }),
-        };
-
-        GenericReceiptMatcher.Assign(new[] { b }, docs);
-
-        Assert.Empty(b.ReceiptFiles);
-        Assert.Contains("2 mögliche", b.ReceiptNote);
+        var r = MerchantKeywords.ReferenceNumbers("Musterfirma Rechnung RE-2026-0815 vom 01.09. Kundennr 12");
+        Assert.Equal(new[] { "RE-2026-0815" }, r.ToArray());
     }
 
     [Fact]

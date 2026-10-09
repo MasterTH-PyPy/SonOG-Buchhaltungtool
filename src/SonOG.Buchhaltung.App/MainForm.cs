@@ -303,6 +303,18 @@ public sealed class MainForm : Form
         }
 
         var bookings = _session.Statement.Bookings;
+
+        if (printNow)
+        {
+            using var sel = new ReceiptSelectionForm(bookings);
+            if (sel.HasItems)
+            {
+                if (sel.ShowDialog(this) != DialogResult.OK) return;
+                sel.ApplyDeselection();
+                Rebind();
+            }
+        }
+
         int open = _rows.Count(r => r.NeedsReview);
         var question =
             $"Es werden {bookings.Count} Buchungen nummeriert ({bookings[0].Number} bis {bookings[^1].Number}) " +
