@@ -179,7 +179,7 @@ public static class TaxpoolImport
     private static string Norm(string h) => NameMatcher.Normalize(h).Replace(" ", "");
 
     /// <summary>CSV-Zeile mit Anführungszeichen (doppelte "" = ein ").</summary>
-    internal static List<string> Split(string line, char sep)
+    public static List<string> Split(string line, char sep)
     {
         var result = new List<string>();
         var sb = new StringBuilder();

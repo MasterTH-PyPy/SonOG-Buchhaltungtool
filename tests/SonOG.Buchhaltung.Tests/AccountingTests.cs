@@ -133,7 +133,7 @@ public class AccountingTests
                 new KontierungsZeile { Betrag = 50m, Sachkonto = 1800, Text = "privat" },
             },
         };
-        Assert.Empty(Buchungssaetze.Pruefen(b, s, Dir()).Where(p => p.Stufe == PruefStufe.Fehler));
+        Assert.DoesNotContain(Buchungssaetze.Pruefen(b, s, Dir()), p => p.Stufe == PruefStufe.Fehler);
 
         var rows = Buchungssaetze.AusKontoauszug(b, s);
         Assert.Equal(3, rows.Count);
