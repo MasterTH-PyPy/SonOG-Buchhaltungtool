@@ -17,7 +17,7 @@ public sealed class ScanResult<T>
 }
 
 /// <summary>
-/// Liest Ausgangsrechnungen (CAO-Rechnungsordner) und Amazon-Belege ein. Ergebnisse werden pro Datei
+/// Liest Ausgangsrechnungen (CAO-Rechnungsordner) und Eingangsrechnungen (Amazon, Lieferanten) ein. Ergebnisse werden pro Datei
 /// (Pfad, Änderungsdatum, Größe) zwischengespeichert, damit ein erneuter Lauf nicht alle PDFs neu lesen muss.
 /// </summary>
 public sealed class DocumentScanner
@@ -39,6 +39,8 @@ public sealed class DocumentScanner
         public ReceiptKind Kind { get; set; }
         public decimal? Amount { get; set; }
         public List<decimal> AllAmounts { get; set; } = new();
+        public string SearchText { get; set; } = "";
+        public bool IsScan { get; set; }
     }
 
     private readonly string _cacheDir;
@@ -112,7 +114,7 @@ public sealed class DocumentScanner
 
     public ScanResult<ReceiptDocument> ScanReceipts(string folder, IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(_cacheDir, "belege3.cache.json");
+        var cachePath = Path.Combine(_cacheDir, "belege4.cache.json");
         var cache = LoadCache<ReceiptCacheEntry>(cachePath);
         var fresh = new ConcurrentDictionary<string, ReceiptCacheEntry>();
 
@@ -144,6 +146,8 @@ public sealed class DocumentScanner
                         Kind = kind,
                         Amount = amount,
                         AllAmounts = AmazonMatcher.FindAmounts(text).ToList(),
+                        SearchText = Flatten(text),
+                        IsScan = text.Count(char.IsLetterOrDigit) < 40,
                     };
                 }
                 catch (Exception ex)
@@ -153,7 +157,7 @@ public sealed class DocumentScanner
                 }
             }
             fresh[file] = entry;
-            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount, entry.AllAmounts));
+            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount, entry.AllAmounts, entry.SearchText, entry.IsScan));
 
             var n = Interlocked.Increment(ref done);
             if (n % 50 == 0) progress?.Report($"Belege lesen: {n} / {files.Count}");
@@ -195,6 +199,12 @@ public sealed class DocumentScanner
             }
         }
         return files;
+    }
+
+    private static string Flatten(string text)
+    {
+        var t = Regex.Replace(text, @"\s+", " ").ToLowerInvariant();
+        return t.Length > 8000 ? t[..8000] : t;
     }
 
     private static Dictionary<string, T> LoadCache<T>(string path)

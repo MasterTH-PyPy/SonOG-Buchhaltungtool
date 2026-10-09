@@ -15,7 +15,7 @@ public sealed class MainForm : Form
 
     private readonly TextBox _txtStatement = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtInvoices = new() { Dock = DockStyle.Fill };
-    private readonly TextBox _txtAmazon = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _txtEingang = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtOutput = new() { Dock = DockStyle.Fill };
     private readonly DateTimePicker _dtOpenFrom = new() { ShowCheckBox = true, Format = DateTimePickerFormat.Short, Width = 140, MinimumSize = new System.Drawing.Size(140, 0), Anchor = AnchorStyles.Left };
     private readonly CheckBox _chkOnlyReview = new() { Text = "Nur Prüffälle anzeigen", AutoSize = true };
@@ -62,8 +62,8 @@ public sealed class MainForm : Form
         inputs.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         AddPathRow(inputs, "Kontoauszug (PDF):", _txtStatement, () => BrowseFile(_txtStatement, "PDF-Dateien (*.pdf)|*.pdf"));
-        AddPathRow(inputs, "Rechnungsordner:", _txtInvoices, () => BrowseFolder(_txtInvoices, "Ordner mit den Ausgangsrechnungen (CAO)"));
-        AddPathRow(inputs, "Amazon-Belege:", _txtAmazon, () => BrowseFolder(_txtAmazon, "Ordner mit den Amazon-Rechnungen (PDF)"));
+        AddPathRow(inputs, "Ausgangsrechnungen:", _txtInvoices, () => BrowseFolder(_txtInvoices, "Ordner mit den Ausgangsrechnungen (CAO)"));
+        AddPathRow(inputs, "Eingangsrechnungen:", _txtEingang, () => BrowseFolder(_txtEingang, "Ordner mit den Eingangsrechnungen (PDF, Amazon-Wochenexporte auch als ZIP)"));
         AddPathRow(inputs, "Ausgabeordner:", _txtOutput, () => BrowseFolder(_txtOutput, "Ausgabeordner"));
 
         inputs.RowCount++;
@@ -194,7 +194,7 @@ public sealed class MainForm : Form
     {
         _txtStatement.Text = _settings.StatementPath;
         _txtInvoices.Text = _settings.InvoiceFolder;
-        _txtAmazon.Text = _settings.AmazonFolder;
+        _txtEingang.Text = _settings.EingangFolder;
         _txtOutput.Text = _settings.OutputFolder;
         _chkMail.Checked = _settings.FetchMail;
         if (DateOnly.TryParse(_settings.OpenFrom, out var d))
@@ -213,7 +213,7 @@ public sealed class MainForm : Form
     {
         _settings.StatementPath = _txtStatement.Text.Trim();
         _settings.InvoiceFolder = _txtInvoices.Text.Trim();
-        _settings.AmazonFolder = _txtAmazon.Text.Trim();
+        _settings.EingangFolder = _txtEingang.Text.Trim();
         _settings.OutputFolder = _txtOutput.Text.Trim();
         _settings.FetchMail = _chkMail.Checked;
         _settings.OpenFrom = _dtOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value).ToString("yyyy-MM-dd") : "";
@@ -224,7 +224,7 @@ public sealed class MainForm : Form
     {
         StatementPath = _txtStatement.Text.Trim(),
         InvoiceFolder = string.IsNullOrWhiteSpace(_txtInvoices.Text) ? null : _txtInvoices.Text.Trim(),
-        AmazonFolder = string.IsNullOrWhiteSpace(_txtAmazon.Text) ? null : _txtAmazon.Text.Trim(),
+        EingangFolder = string.IsNullOrWhiteSpace(_txtEingang.Text) ? null : _txtEingang.Text.Trim(),
         OutputFolder = _txtOutput.Text.Trim(),
         MailAccounts = _settings.MailAccounts,
         FetchMail = _chkMail.Checked && _settings.MailAccounts.Count > 0,

@@ -492,6 +492,44 @@ public class PaymentReconcilerTests
         Assert.Equal(new[] { "RE-2026-0815" }, r.ToArray());
     }
 
+    private static ReceiptDocument Inb(string file, string text, params decimal[] amounts) =>
+        new(file, new string[0], ReceiptKind.Rechnung, null, amounts, text.ToLowerInvariant(), text.Length < 40);
+
+    [Fact]
+    public void Inbound_invoice_is_matched_by_reference_number()
+    {
+        var b = Fx.Classify("Lastschrift", -119.00m, "Musterfirma GmbH Rechnung RE-2026-0815");
+        var docs = new[] { Inb("e/a.pdf", "Musterfirma GmbH Rechnung Nr. RE-2026-0815 Summe 119,00 EUR", 119.00m), Inb("e/b.pdf", "Andere Firma Rechnung 5,00 EUR", 5.00m) };
+
+        InboundMatcher.Assign(new[] { b }, docs);
+
+        Assert.Equal(new[] { "e/a.pdf" }, b.ReceiptFiles.ToArray());
+        Assert.Contains("prüfen", b.ReceiptNote);
+    }
+
+    [Fact]
+    public void Inbound_invoice_by_amount_needs_the_name_too()
+    {
+        var b = Fx.Classify("Lastschrift", -20.00m, "Musterfirma GmbH");
+        var wrongName = new[] { Inb("e/x.pdf", "Fremde AG Rechnung Summe 20,00 EUR Zahlbar sofort bei Erhalt der Ware", 20.00m) };
+        InboundMatcher.Assign(new[] { b }, wrongName);
+        Assert.Empty(b.ReceiptFiles);
+        Assert.Contains("Name fehlt", b.ReceiptNote);
+
+        var b2 = Fx.Classify("Lastschrift", -20.00m, "Musterfirma GmbH");
+        var right = new[] { Inb("e/y.pdf", "Musterfirma GmbH Rechnung Summe 20,00 EUR Zahlbar sofort bei Erhalt der Ware", 20.00m) };
+        InboundMatcher.Assign(new[] { b2 }, right);
+        Assert.Equal(new[] { "e/y.pdf" }, b2.ReceiptFiles.ToArray());
+    }
+
+    [Fact]
+    public void Scanned_pdf_without_text_is_never_matched()
+    {
+        var b = Fx.Classify("Lastschrift", -20.00m, "Musterfirma GmbH");
+        InboundMatcher.Assign(new[] { b }, new[] { Inb("e/scan.pdf", "", 20.00m) });
+        Assert.Empty(b.ReceiptFiles);
+    }
+
     [Fact]
     public void Amounts_are_found_in_german_format()
     {

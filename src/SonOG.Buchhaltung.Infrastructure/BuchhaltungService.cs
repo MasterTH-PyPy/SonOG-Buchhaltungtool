@@ -16,7 +16,7 @@ public sealed class ServiceOptions
 {
     public string StatementPath { get; set; } = "";
     public string? InvoiceFolder { get; set; }
-    public string? AmazonFolder { get; set; }
+    public string? EingangFolder { get; set; }
     public string OutputFolder { get; set; } = "";
     public DateOnly? OpenFrom { get; set; }
     public List<MailAccount> MailAccounts { get; set; } = new();
@@ -120,7 +120,7 @@ public sealed class BuchhaltungService
         var reconcile = reconciler.Run(statement.Bookings, o.OpenFrom, statement.LastBookingDate);
 
         var receiptFolders = new List<string>();
-        if (!string.IsNullOrWhiteSpace(o.AmazonFolder) && Directory.Exists(o.AmazonFolder)) receiptFolders.Add(o.AmazonFolder);
+        if (!string.IsNullOrWhiteSpace(o.EingangFolder) && Directory.Exists(o.EingangFolder)) receiptFolders.Add(o.EingangFolder);
 
         if (receiptFolders.Count > 0)
         {
@@ -133,13 +133,18 @@ public sealed class BuchhaltungService
                 warnings.AddRange(receipts.Problems.Take(5).Select(p => "Beleg nicht lesbar: " + p));
             }
             var assigned = AmazonMatcher.Assign(statement.Bookings, allReceipts);
+            InboundMatcher.Assign(statement.Bookings, allReceipts);
+            var scans = allReceipts.Where(r => r.IsScan).ToList();
+            if (scans.Count > 0)
+                warnings.Add($"{scans.Count} PDF(s) im Eingangsordner sind Scans ohne Text und können nicht automatisch gelesen werden (OCR fehlt): " +
+                             string.Join(", ", scans.Take(3).Select(r => Path.GetFileName(r.FilePath))) + (scans.Count > 3 ? " ..." : ""));
             if (assigned.UnusedDocuments.Count > 0)
-                warnings.Add($"{assigned.UnusedDocuments.Count} Amazon-Beleg(e) im Ordner gehören zu keiner Buchung dieses Auszugs (z. B. andere Monate).");
+                warnings.Add($"{assigned.UnusedDocuments.Count} Beleg(e) im Eingangsordner gehören zu keiner Buchung dieses Auszugs (z. B. andere Monate).");
         }
         else
         {
             foreach (var b in statement.Bookings.Where(b => b.Category.IsAmazon() && !b.Beleglos))
-                b.ReceiptNote = "Kein Amazon-Belegordner angegeben";
+                b.ReceiptNote = "Kein Ordner für Eingangsrechnungen angegeben";
         }
 
         // Für Buchungen ohne Beleg: Mail-Postfächer nach einer Mail des Shops/Verkäufers (kleines Zeitfenster) mit PDF-Anhang durchsuchen

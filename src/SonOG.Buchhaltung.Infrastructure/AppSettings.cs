@@ -7,6 +7,10 @@ public sealed class AppSettings
 {
     public string StatementPath { get; set; } = "";
     public string InvoiceFolder { get; set; } = "";
+    /// <summary>Eingangsrechnungen (Amazon-Wochenexporte, Rechnungen von Lieferanten, Scans).</summary>
+    public string EingangFolder { get; set; } = "";
+
+    /// <summary>Alter Name der Einstellung, wird beim Laden in EingangFolder übernommen.</summary>
     public string AmazonFolder { get; set; } = "";
     public string OutputFolder { get; set; } = "";
 
@@ -28,7 +32,12 @@ public sealed class AppSettings
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+                {
+                var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+                if (loaded.EingangFolder.Length == 0 && loaded.AmazonFolder.Length > 0) loaded.EingangFolder = loaded.AmazonFolder;
+                loaded.AmazonFolder = "";
+                return loaded;
+            }
         }
         catch (Exception ex) when (ex is JsonException or IOException) { }
         return new AppSettings();
