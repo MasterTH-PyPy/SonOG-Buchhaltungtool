@@ -26,6 +26,8 @@ public sealed class MainForm : Form
     private readonly Button _btnAttach = new() { Text = "Beleg zuordnen ...", AutoSize = true };
     private readonly Button _btnExport = new() { Text = "Exportieren ...", AutoSize = true };
     private readonly Button _btnPrint = new() { Text = "Drucken (rückwärts) ...", AutoSize = true };
+    private readonly CheckBox _chkMail = new() { Text = "Mails abrufen", AutoSize = true };
+    private readonly Button _btnMail = new() { Text = "Mail-Postfächer ...", AutoSize = true };
     private readonly Button _btnRules = new() { Text = "Regeln öffnen", AutoSize = true };
     private readonly Button _btnRelease = new() { Text = "Nummern freigeben", AutoSize = true };
 
@@ -69,7 +71,7 @@ public sealed class MainForm : Form
         inputs.Controls.Add(_dtOpenFrom, 1, inputs.RowCount - 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
-        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnRules, _btnRelease, _chkOnlyReview });
+        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnMail, _chkMail, _btnRules, _btnRelease, _chkOnlyReview });
         _chkPrint.Margin = new Padding(3, 8, 12, 3);
         _chkOnlyReview.Margin = new Padding(12, 8, 3, 3);
 
@@ -122,6 +124,13 @@ public sealed class MainForm : Form
         _btnAttach.Click += (_, _) => OnAttach();
         _btnExport.Click += async (_, _) => await OnExportAsync(false);
         _btnPrint.Click += async (_, _) => await OnExportAsync(true);
+        _btnMail.Click += (_, _) =>
+        {
+            using var dlg = new MailAccountsForm(_settings.MailAccounts);
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            _settings.MailAccounts = dlg.Result;
+            try { _settings.Save(); } catch (IOException) { }
+        };
         _btnRules.Click += (_, _) => OnOpenRules();
         _btnRelease.Click += (_, _) => OnRelease();
         _chkOnlyReview.CheckedChanged += (_, _) => Rebind();
@@ -153,8 +162,28 @@ public sealed class MainForm : Form
         Col("Kategorie", 140);
         Col("Status", 170);
         Col("Rechnungen", 170);
-        Col("Hinweis", 300, fill: true);
-        Col("Buchungstext", 250);
+        Col("Hinweis", 200, fill: true);
+        Col("Buchungstext", 300, fill: true);
+        // Beide Spalten teilen sich den Rest: Hinweis 35 %, Buchungstext 65 %; lange Texte als Tooltip statt breiter Spalte.
+        foreach (var (name, weight) in new[] { ("Hinweis", 35f), ("Buchungstext", 65f) })
+        {
+            var c = _grid.Columns[name];
+            if (c is null) continue;
+            c.FillWeight = weight;
+            c.MinimumWidth = 120;
+            c.DefaultCellStyle.WrapMode = DataGridViewTriState.False;
+        }
+        _grid.ShowCellToolTips = true;
+        _grid.CellToolTipTextNeeded -= GridToolTip;
+        _grid.CellToolTipTextNeeded += GridToolTip;
+    }
+
+    private void GridToolTip(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+        var name = _grid.Columns[e.ColumnIndex].Name;
+        if (name is "Hinweis" or "Buchungstext")
+            _grid.Rows[e.RowIndex].Cells[e.ColumnIndex].ToolTipText = Convert.ToString(_grid.Rows[e.RowIndex].Cells[e.ColumnIndex].Value) ?? "";
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -167,6 +196,7 @@ public sealed class MainForm : Form
         _txtInvoices.Text = _settings.InvoiceFolder;
         _txtAmazon.Text = _settings.AmazonFolder;
         _txtOutput.Text = _settings.OutputFolder;
+        _chkMail.Checked = _settings.FetchMail;
         if (DateOnly.TryParse(_settings.OpenFrom, out var d))
         {
             _dtOpenFrom.Value = d.ToDateTime(TimeOnly.MinValue);
@@ -185,6 +215,7 @@ public sealed class MainForm : Form
         _settings.InvoiceFolder = _txtInvoices.Text.Trim();
         _settings.AmazonFolder = _txtAmazon.Text.Trim();
         _settings.OutputFolder = _txtOutput.Text.Trim();
+        _settings.FetchMail = _chkMail.Checked;
         _settings.OpenFrom = _dtOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value).ToString("yyyy-MM-dd") : "";
         try { _settings.Save(); } catch (IOException) { }
     }
@@ -195,6 +226,8 @@ public sealed class MainForm : Form
         InvoiceFolder = string.IsNullOrWhiteSpace(_txtInvoices.Text) ? null : _txtInvoices.Text.Trim(),
         AmazonFolder = string.IsNullOrWhiteSpace(_txtAmazon.Text) ? null : _txtAmazon.Text.Trim(),
         OutputFolder = _txtOutput.Text.Trim(),
+        MailAccounts = _settings.MailAccounts,
+        FetchMail = _chkMail.Checked && _settings.MailAccounts.Count > 0,
         OpenFrom = _dtOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value) : null,
     };
 

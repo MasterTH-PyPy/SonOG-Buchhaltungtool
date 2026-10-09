@@ -38,6 +38,7 @@ public sealed class DocumentScanner
         public List<string> Orders { get; set; } = new();
         public ReceiptKind Kind { get; set; }
         public decimal? Amount { get; set; }
+        public List<decimal> AllAmounts { get; set; } = new();
     }
 
     private readonly string _cacheDir;
@@ -111,7 +112,7 @@ public sealed class DocumentScanner
 
     public ScanResult<ReceiptDocument> ScanReceipts(string folder, IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(_cacheDir, "belege2.cache.json");
+        var cachePath = Path.Combine(_cacheDir, "belege3.cache.json");
         var cache = LoadCache<ReceiptCacheEntry>(cachePath);
         var fresh = new ConcurrentDictionary<string, ReceiptCacheEntry>();
 
@@ -142,6 +143,7 @@ public sealed class DocumentScanner
                         Orders = AmazonMatcher.FindOrderNumbers(text).ToList(),
                         Kind = kind,
                         Amount = amount,
+                        AllAmounts = AmazonMatcher.FindAmounts(text).ToList(),
                     };
                 }
                 catch (Exception ex)
@@ -151,7 +153,7 @@ public sealed class DocumentScanner
                 }
             }
             fresh[file] = entry;
-            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount));
+            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount, entry.AllAmounts));
 
             var n = Interlocked.Increment(ref done);
             if (n % 50 == 0) progress?.Report($"Belege lesen: {n} / {files.Count}");

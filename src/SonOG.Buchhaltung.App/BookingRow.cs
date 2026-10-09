@@ -42,7 +42,7 @@ internal sealed class BookingRow
         string.Join(" ", new[] { Booking.Beleglos ? Booking.BelegloGrund : null, Booking.Match?.Note, Booking.ReceiptNote }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
 
-    public string Buchungstext => Booking.Text;
+    public string Buchungstext => System.Text.RegularExpressions.Regex.Replace(Booking.Text, @"\s+", " ").Trim();
 
     /// <summary>Muss die Buchung noch geprüft werden?</summary>
     [Browsable(false)]

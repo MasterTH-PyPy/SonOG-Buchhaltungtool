@@ -22,7 +22,8 @@ public sealed record ReceiptDocument(
     string FilePath,
     IReadOnlyList<string> OrderNumbers,
     ReceiptKind Kind = ReceiptKind.Unbekannt,
-    decimal? Amount = null)
+    decimal? Amount = null,
+    IReadOnlyList<decimal>? AllAmounts = null)
 {
     /// <summary>Betrag, der auf dem Konto erscheint: Rechnung 62,70 → -62,70; Gutschrift -20,05 → +20,05.</summary>
     public decimal? BookingAmount => Amount is null ? null : -Amount.Value;
@@ -50,6 +51,21 @@ public static class AmazonMatcher
     private static readonly Regex OverviewAmountRx = Rx(@"Gesamtbestellwert:?\s*(-?\s*[\d.]+,\d{2})");
 
     private static Regex Rx(string p) => new(p, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex MoneyRx = new(@"(?<![\d.,])(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})(?!\d)", RegexOptions.Compiled);
+
+    /// <summary>Alle Geldbeträge (Format 1.234,56) im Text, ohne Doppelte.</summary>
+    public static IReadOnlyList<decimal> FindAmounts(string text)
+    {
+        var set = new List<decimal>();
+        foreach (Match m in MoneyRx.Matches(text))
+        {
+            var s = m.Groups[1].Value.Replace(".", "") + "." + m.Groups[2].Value;
+            if (decimal.TryParse(s, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) && !set.Contains(v))
+                set.Add(v);
+        }
+        return set;
+    }
 
     public static IReadOnlyList<string> FindOrderNumbers(string text) =>
         OrderRx.Matches(text).Select(m => m.Groups[1].Value).Distinct().ToList();

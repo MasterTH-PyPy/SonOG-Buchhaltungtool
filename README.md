@@ -86,6 +86,10 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   Betragsprüfung. Rechnungen von Marktplatz-Verkäufern ohne lesbaren Betrag werden nur zugeordnet, wenn die
   Bestellübersicht denselben Betrag zeigt (Hinweis „bitte prüfen“). Das Layout wurde an einem Wochenexport geprüft,
   die PdfPig-Textausgabe aber noch nicht auf Windows.
-- Eingangsrechnungen aus Mail-Postfächern (web.de, Gmail, Roundcube) werden noch nicht automatisch abgeholt;
-  die PDFs müssen im Amazon-/Belegordner liegen.
+- **Mail-Abruf:** Button „Mail-Postfächer …“ (IMAP: web.de, Gmail mit App-Passwort, Roundcube-Server) und Häkchen
+  „Mails abrufen“. Geladen werden PDF-Anhänge der Mails im Zeitraum des Auszugs (60 Tage davor bis 7 Tage danach),
+  nur lesend, nach `%AppData%\SonOG-Buchhaltung\mail`. Passwörter liegen DPAPI-verschlüsselt in `einstellungen.json`.
+  Amazon-Rechnungen aus Mails werden wie die aus dem Amazon-Ordner über Bestellnummer und Betrag zugeordnet;
+  sonstige Ausgaben nur, wenn genau ein Beleg den Betrag enthält (immer mit „bitte prüfen“).
+  Der Mail-Code (MailKit) ist hier nicht kompiliert oder gegen ein echtes Postfach getestet.
 - Echte Kontoauszüge, Rechnungen und Excel-Ausgaben sind per `.gitignore` vom Repo ausgeschlossen.

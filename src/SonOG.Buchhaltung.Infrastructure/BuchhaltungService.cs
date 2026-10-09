@@ -6,6 +6,7 @@ using SonOG.Buchhaltung.Core.Numbering;
 using SonOG.Buchhaltung.Core.Parsing;
 using SonOG.Buchhaltung.Core.Rules;
 using SonOG.Buchhaltung.Infrastructure.Export;
+using SonOG.Buchhaltung.Infrastructure.Mail;
 using SonOG.Buchhaltung.Infrastructure.Pdf;
 using SonOG.Buchhaltung.Infrastructure.Scanning;
 
@@ -18,6 +19,8 @@ public sealed class ServiceOptions
     public string? AmazonFolder { get; set; }
     public string OutputFolder { get; set; } = "";
     public DateOnly? OpenFrom { get; set; }
+    public List<MailAccount> MailAccounts { get; set; } = new();
+    public bool FetchMail { get; set; }
 }
 
 /// <summary>Ergebnis des Einlesens. Es wurde noch nichts geschrieben (Vorschau / Dry-Run).</summary>
@@ -116,14 +119,39 @@ public sealed class BuchhaltungService
         var reconciler = new PaymentReconciler(index, statement.Year, state.PaidExcluding(key));
         var reconcile = reconciler.Run(statement.Bookings, o.OpenFrom, statement.LastBookingDate);
 
-        if (!string.IsNullOrWhiteSpace(o.AmazonFolder) && Directory.Exists(o.AmazonFolder))
+        // Belege aus Mail-Postfächern holen (nur lesen) und zusammen mit dem Amazon-/Belegordner auswerten
+        var mailDir = MailFetcher.MailFolder(_dataDir);
+        if (o.FetchMail)
         {
-            progress?.Report("Amazon-Belege lesen ...");
-            var receipts = scanner.ScanReceipts(o.AmazonFolder, progress, ct);
-            var assigned = AmazonMatcher.Assign(statement.Bookings, receipts.Items);
+            var from = statement.Bookings.Min(b => b.Date).AddDays(-60);
+            var to = (statement.LastBookingDate ?? DateOnly.FromDateTime(DateTime.Today)).AddDays(7);
+            foreach (var acc in o.MailAccounts.Where(a => a.Enabled && a.Host.Length > 0))
+            {
+                progress?.Report($"Mails abrufen: {acc.Name} ...");
+                var fetched = MailFetcher.Fetch(acc, from, to, mailDir, progress, ct);
+                warnings.Add($"Mail {acc.Name}: {fetched.MessagesChecked} Mails geprüft, {fetched.Downloaded} PDF(s) neu geladen.");
+                warnings.AddRange(fetched.Errors.Take(3));
+            }
+        }
+
+        var receiptFolders = new List<string>();
+        if (!string.IsNullOrWhiteSpace(o.AmazonFolder) && Directory.Exists(o.AmazonFolder)) receiptFolders.Add(o.AmazonFolder);
+        if (Directory.Exists(mailDir) && Directory.EnumerateFiles(mailDir, "*.pdf", SearchOption.AllDirectories).Any()) receiptFolders.Add(mailDir);
+
+        if (receiptFolders.Count > 0)
+        {
+            progress?.Report("Belege lesen ...");
+            var allReceipts = new List<ReceiptDocument>();
+            foreach (var folder in receiptFolders)
+            {
+                var receipts = scanner.ScanReceipts(folder, progress, ct);
+                allReceipts.AddRange(receipts.Items);
+                warnings.AddRange(receipts.Problems.Take(5).Select(p => "Beleg nicht lesbar: " + p));
+            }
+            var assigned = AmazonMatcher.Assign(statement.Bookings, allReceipts);
             if (assigned.UnusedDocuments.Count > 0)
                 warnings.Add($"{assigned.UnusedDocuments.Count} Amazon-Beleg(e) im Ordner gehören zu keiner Buchung dieses Auszugs (z. B. andere Monate).");
-            warnings.AddRange(receipts.Problems.Take(5).Select(p => "Beleg nicht lesbar: " + p));
+            GenericReceiptMatcher.Assign(statement.Bookings, allReceipts);
         }
         else
         {
