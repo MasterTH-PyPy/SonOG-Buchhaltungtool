@@ -14,7 +14,7 @@ public sealed class MailAccountsForm : Form
     private readonly TextBox _password = new() { Dock = DockStyle.Fill, UseSystemPasswordChar = true };
     private readonly TextBox _folders = new() { Dock = DockStyle.Fill, Text = "INBOX" };
     private readonly CheckBox _enabled = new() { Text = "aktiv", Checked = true, AutoSize = true };
-    private readonly Label _hint = new() { AutoSize = true, MaximumSize = new Size(420, 0) };
+    private readonly Label _hint = new() { AutoSize = true, MaximumSize = new Size(560, 0) };
     private bool _loading;
 
     public MailAccountsForm(List<MailAccount> accounts)
@@ -26,21 +26,21 @@ public sealed class MailAccountsForm : Form
         }).ToList();
 
         Text = "Mail-Postfächer";
-        Size = new Size(760, 420);
+        ClientSize = new Size(860, 520);
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
         MaximizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
 
-        var left = new Panel { Dock = DockStyle.Left, Width = 200, Padding = new Padding(8) };
-        var btnAdd = new Button { Text = "Hinzufügen", Dock = DockStyle.Bottom };
-        var btnDel = new Button { Text = "Entfernen", Dock = DockStyle.Bottom };
+        var left = new Panel { Dock = DockStyle.Left, Width = 210, Padding = new Padding(8) };
+        var btnAdd = new Button { Text = "Hinzufügen", Dock = DockStyle.Bottom, Height = 32 };
+        var btnDel = new Button { Text = "Entfernen", Dock = DockStyle.Bottom, Height = 32 };
         left.Controls.Add(_list);
         left.Controls.Add(btnDel);
         left.Controls.Add(btnAdd);
 
         var form = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(8) };
-        form.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+        form.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         void Row(string label, Control c)
         {
@@ -64,9 +64,9 @@ public sealed class MailAccountsForm : Form
         form.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         form.Controls.Add(_hint, 1, form.RowCount++);
 
-        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 40, Padding = new Padding(8) };
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel };
+        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 48, Padding = new Padding(8) };
+        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true, MinimumSize = new Size(90, 30) };
+        var cancel = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel, AutoSize = true, MinimumSize = new Size(90, 30) };
         bottom.Controls.Add(cancel);
         bottom.Controls.Add(ok);
         AcceptButton = ok;
@@ -90,7 +90,8 @@ public sealed class MailAccountsForm : Form
         };
         _list.SelectedIndexChanged += (_, _) => ShowSelected();
         ok.Click += (_, _) => Commit();
-        Rebind(_accounts.Count > 0 ? 0 : -1);
+        if (_accounts.Count == 0) _accounts.Add(new MailAccount { Name = "Postfach 1", Port = 993 });
+        Rebind(0);
     }
 
     public List<MailAccount> Result => _accounts;
