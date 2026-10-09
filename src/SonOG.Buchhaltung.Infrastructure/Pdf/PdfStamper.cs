@@ -45,6 +45,32 @@ public static class PdfStamper
         doc.Save(targetPdf);
     }
 
+    public static int PageCount(string pdf)
+    {
+        using var doc = PdfReader.Open(pdf, PdfDocumentOpenMode.Import);
+        return doc.Pages.Count;
+    }
+
+    /// <summary>Stempelt auf Seiten ohne Buchungen (z. B. Entgeltabrechnung als Anlage) einen Beleg-Kasten oben rechts.</summary>
+    public static void StampPageLabels(string pdf, IReadOnlyDictionary<int, string> labels)
+    {
+        using var doc = PdfReader.Open(pdf, PdfDocumentOpenMode.Modify);
+        foreach (var (index, number) in labels)
+        {
+            var page = doc.Pages[index];
+            using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
+            var font = new XFont("Arial", 11, XFontStyleEx.Bold);
+            var text = "Beleg " + number;
+            var size = gfx.MeasureString(text, font);
+            double pad = 4;
+            double x = page.Width.Point - 20 - size.Width - 2 * pad;
+            var rect = new XRect(x, 14, size.Width + 2 * pad, size.Height + 2 * pad - 2);
+            gfx.DrawRectangle(new XPen(Blue, 0.9), XBrushes.White, rect);
+            gfx.DrawString(text, font, new XSolidBrush(Blue), x + pad, 14 + pad + size.Height * 0.78, XStringFormats.BaseLineLeft);
+        }
+        doc.Save(pdf);
+    }
+
     /// <summary>Stempelt die laufende Nummer oben rechts auf Seite 1 eines Belegs.</summary>
     public static void StampReceipt(string sourcePdf, string targetPdf, string number)
     {

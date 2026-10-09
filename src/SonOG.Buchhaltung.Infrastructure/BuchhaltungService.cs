@@ -205,6 +205,16 @@ public sealed class BuchhaltungService
         progress?.Report("Kontoauszug stempeln ...");
         PdfStamper.StampStatement(o.StatementPath, result.StatementPdf, bookings);
 
+        // Seiten hinter der letzten Buchungsseite (Anlage "Entgeltabrechnung") gehören zur Entgelt-Buchung:
+        // Sie bekommen deren Nummer und werden im Druckpaket direkt hinter der Seite dieser Buchung einsortiert.
+        int lastBookingPage = bookings.Max(b => b.PageIndex);
+        int pageCount = PdfStamper.PageCount(result.StatementPdf);
+        var extraPages = Enumerable.Range(lastBookingPage + 1, Math.Max(0, pageCount - lastBookingPage - 1)).ToList();
+        var typeRules = session.Rules.BelegloseTypen.Where(t => t.Typ.Length > 0).ToList();
+        var feeBooking = bookings.LastOrDefault(b => typeRules.Any(t => b.Type.StartsWith(t.Typ, StringComparison.OrdinalIgnoreCase)));
+        if (extraPages.Count > 0 && feeBooking is not null)
+            PdfStamper.StampPageLabels(result.StatementPdf, extraPages.ToDictionary(i => i, _ => feeBooking.Number));
+
         // Belege stempeln (Kopien mit Nummer im Dateinamen)
         Directory.CreateDirectory(result.ReceiptFolder);
         var stampedByBooking = new List<(Booking Booking, string File)>();
@@ -234,11 +244,15 @@ public sealed class BuchhaltungService
             // Rückwärts nach Auszugsseiten: letzte Seite zuerst, danach deren Belege (in Buchungsreihenfolge),
             // dann die vorletzte Seite mit ihren Belegen usw. So liegt der Stapel nach dem Druck richtig herum.
             var items = new List<(string File, int? Page)>();
+            if (feeBooking is null) // keine Zuordnung möglich: Anlageseiten wie normale Seiten ganz am Ende des Auszugs, also zuerst
+                foreach (var i in extraPages.OrderByDescending(i => i)) items.Add((result.StatementPdf, i));
             foreach (var pageGroup in bookings.GroupBy(b => b.PageIndex).OrderByDescending(g => g.Key))
             {
                 items.Add((result.StatementPdf, pageGroup.Key));
                 foreach (var x in stampedByBooking.Where(x => x.Booking.PageIndex == pageGroup.Key).OrderBy(x => bookings.IndexOf(x.Booking)))
                     items.Add((x.File, null));
+                if (feeBooking is not null && pageGroup.Contains(feeBooking))
+                    foreach (var i in extraPages) items.Add((result.StatementPdf, i));
             }
             PdfStamper.MergePages(items, result.PrintPackage);
         }
