@@ -15,8 +15,8 @@ public static class PdfStamper
 {
     static PdfStamper()
     {
-        // PDFsharp 6: Unter Windows die installierten Schriften verwenden (Arial).
-        GlobalFontSettings.UseWindowsFontsUnderWindows = true;
+        // PDFsharp 6 (Core-Build) kennt keine Systemschriften von selbst: Arial aus dem Windows-Schriftenordner laden.
+        GlobalFontSettings.FontResolver ??= new WindowsFontResolver();
     }
 
     private static readonly XColor Blue = XColor.FromArgb(13, 51, 179);
@@ -125,5 +125,19 @@ public static class PdfStamper
         {
             foreach (var d in cache.Values) d.Dispose();
         }
+    }
+}
+
+/// <summary>Liefert Arial (normal/fett) aus dem Windows-Schriftenordner.</summary>
+internal sealed class WindowsFontResolver : IFontResolver
+{
+    public FontResolverInfo? ResolveTypeface(string familyName, bool isBold, bool isItalic) =>
+        new FontResolverInfo(isBold ? "arial-bold" : "arial-regular");
+
+    public byte[]? GetFont(string faceName)
+    {
+        var file = faceName == "arial-bold" ? "arialbd.ttf" : "arial.ttf";
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), file);
+        return File.ReadAllBytes(path);
     }
 }
