@@ -18,6 +18,7 @@ public sealed class MainForm : Form
     private readonly TextBox _txtEingang = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtOutput = new() { Dock = DockStyle.Fill };
     private readonly NumericUpDown _numFrom = new() { Minimum = 1, Maximum = 999999, Value = 1, Width = 80 };
+    private readonly Label _lblNumberPreview = new() { AutoSize = true, Margin = new Padding(8, 6, 0, 0), ForeColor = Color.FromArgb(13, 51, 179) };
     private readonly CheckBox _chkOpenFrom = new() { Text = "nur ab", AutoSize = true, Margin = new Padding(3, 5, 6, 3) };
     private readonly DateTimePicker _dtOpenFrom = new() { Format = DateTimePickerFormat.Short, Width = 130, Enabled = false };
     private readonly CheckBox _chkOnlyReview = new() { Text = "Nur Prüffälle anzeigen", AutoSize = true };
@@ -80,7 +81,8 @@ public sealed class MainForm : Form
         inputs.Controls.Add(new Label { Text = "Erste Belegnummer:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 6) }, 0, inputs.RowCount - 1);
         var range = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0), Anchor = AnchorStyles.Left };
                 range.Controls.Add(_numFrom);
-        range.Controls.Add(new Label { Text = "(ist der Zähler darunter, wird er hochgesetzt; sonst läuft er weiter)", AutoSize = true, Margin = new Padding(8, 6, 0, 0) });
+        range.Controls.Add(_lblNumberPreview);
+        _numFrom.ValueChanged += (_, _) => UpdateNumberPreview();
         inputs.Controls.Add(range, 1, inputs.RowCount - 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
@@ -213,6 +215,7 @@ public sealed class MainForm : Form
         _txtOutput.Text = _settings.OutputFolder;
         _chkMail.Checked = _settings.FetchMail;
         _numFrom.Value = Math.Clamp(_settings.NumberFrom, 1, 999999);
+        UpdateNumberPreview();
         if (DateOnly.TryParse(_settings.OpenFrom, out var d))
         {
             _dtOpenFrom.Value = d.ToDateTime(TimeOnly.MinValue);
@@ -421,6 +424,27 @@ public sealed class MainForm : Form
     private Booking? SelectedBooking() =>
         _grid.CurrentRow?.DataBoundItem is BookingRow row ? row.Booking : null;
 
+    /// <summary>Zeigt, wie die Belegnummern aussehen: nach dem Einlesen die echten Nummern des Auszugs, davor eine Vorschau aus dem Format.</summary>
+    private void UpdateNumberPreview()
+    {
+        try
+        {
+            if (_session is { Statement.Bookings.Count: > 0 } s)
+            {
+                var b = s.Statement.Bookings;
+                _lblNumberPreview.Text = $"Dieser Auszug: {b[0].Number} bis {b[^1].Number} ({b.Count} Buchungen; Zähler läuft weiter, wenn er höher liegt)";
+                return;
+            }
+            var rules = SonOG.Buchhaltung.Core.Rules.AppRules.Load(_service.RulesPath);
+            var first = SonOG.Buchhaltung.Core.Numbering.NumberFormat.Format(rules.NummernFormat, DateTime.Today.Year, (int)_numFrom.Value);
+            _lblNumberPreview.Text = $"Vorschau: {first} (Zähler wird mindestens hierauf gesetzt)";
+        }
+        catch (Exception)
+        {
+            _lblNumberPreview.Text = "";
+        }
+    }
+
     private void Rebind()
     {
         _rows.RaiseListChangedEvents = false;
@@ -438,6 +462,7 @@ public sealed class MainForm : Form
         _rows.ResetBindings();
         ShowDetails();
         UpdateButtons();
+        UpdateNumberPreview();
     }
 
     private void RefreshKeepSelection()
