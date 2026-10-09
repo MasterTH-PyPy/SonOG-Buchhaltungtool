@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SonOG.Buchhaltung.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="UglyToad.PdfPig" Version="0.1.9" />
+    <PackageReference Include="PDFsharp" Version="6.1.1" />
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SonOG.Buchhaltung.Core\SonOG.Buchhaltung.Core.csproj" />
+  </ItemGroup>
+</Project>

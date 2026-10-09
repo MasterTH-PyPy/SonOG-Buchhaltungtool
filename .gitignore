@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+# Echte Kontoauszüge, Rechnungen und Ausgaben gehören nie ins Repo
+*.PDF
+*.pdf
+*.xlsx
+out/
+Ausgabe/

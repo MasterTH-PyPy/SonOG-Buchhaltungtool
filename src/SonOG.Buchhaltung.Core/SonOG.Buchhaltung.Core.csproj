@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SonOG.Buchhaltung.Core</RootNamespace>
+  </PropertyGroup>
+</Project>
