@@ -231,9 +231,16 @@ public sealed class BuchhaltungService
         {
             progress?.Report("Druckpaket zusammenstellen ...");
             result.PrintPackage = Path.Combine(o.OutputFolder, stem + "_druckpaket.pdf");
-            var order = new List<string> { result.StatementPdf };
-            order.AddRange(stampedByBooking.OrderBy(x => bookings.IndexOf(x.Booking)).Select(x => x.File));
-            PdfStamper.Merge(order, result.PrintPackage);
+            // Rückwärts nach Auszugsseiten: letzte Seite zuerst, danach deren Belege (in Buchungsreihenfolge),
+            // dann die vorletzte Seite mit ihren Belegen usw. So liegt der Stapel nach dem Druck richtig herum.
+            var items = new List<(string File, int? Page)>();
+            foreach (var pageGroup in bookings.GroupBy(b => b.PageIndex).OrderByDescending(g => g.Key))
+            {
+                items.Add((result.StatementPdf, pageGroup.Key));
+                foreach (var x in stampedByBooking.Where(x => x.Booking.PageIndex == pageGroup.Key).OrderBy(x => bookings.IndexOf(x.Booking)))
+                    items.Add((x.File, null));
+            }
+            PdfStamper.MergePages(items, result.PrintPackage);
         }
 
         // Erst jetzt, nach erfolgreicher Ausgabe: Nummern und bezahlte Rechnungen dauerhaft vermerken.

@@ -78,4 +78,26 @@ public static class PdfStamper
         }
         output.Save(targetPdf);
     }
+
+    /// <summary>Wie Merge, aber mit Seitenauswahl: Page = null nimmt alle Seiten, sonst nur die Seite (0-basiert).</summary>
+    public static void MergePages(IEnumerable<(string File, int? Page)> items, string targetPdf)
+    {
+        using var output = new PdfDocument();
+        var cache = new Dictionary<string, PdfDocument>();
+        try
+        {
+            foreach (var (file, pageNo) in items)
+            {
+                if (!cache.TryGetValue(file, out var input))
+                    cache[file] = input = PdfReader.Open(file, PdfDocumentOpenMode.Import);
+                if (pageNo is { } n) output.AddPage(input.Pages[n]);
+                else foreach (PdfPage page in input.Pages) output.AddPage(page);
+            }
+            output.Save(targetPdf);
+        }
+        finally
+        {
+            foreach (var d in cache.Values) d.Dispose();
+        }
+    }
 }

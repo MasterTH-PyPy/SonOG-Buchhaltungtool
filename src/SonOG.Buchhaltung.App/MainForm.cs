@@ -25,6 +25,7 @@ public sealed class MainForm : Form
     private readonly Button _btnAccept = new() { Text = "Vorschlag übernehmen", AutoSize = true };
     private readonly Button _btnAttach = new() { Text = "Beleg zuordnen ...", AutoSize = true };
     private readonly Button _btnExport = new() { Text = "Exportieren ...", AutoSize = true };
+    private readonly Button _btnPrint = new() { Text = "Drucken (rückwärts) ...", AutoSize = true };
     private readonly Button _btnRules = new() { Text = "Regeln öffnen", AutoSize = true };
     private readonly Button _btnRelease = new() { Text = "Nummern freigeben", AutoSize = true };
 
@@ -68,7 +69,7 @@ public sealed class MainForm : Form
         inputs.Controls.Add(_dtOpenFrom, 1, inputs.RowCount - 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
-        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnAccept, _btnAttach, _btnExport, _chkPrint, _btnRules, _btnRelease, _chkOnlyReview });
+        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnRules, _btnRelease, _chkOnlyReview });
         _chkPrint.Margin = new Padding(3, 8, 12, 3);
         _chkOnlyReview.Margin = new Padding(12, 8, 3, 3);
 
@@ -119,7 +120,8 @@ public sealed class MainForm : Form
         _btnLoad.Click += async (_, _) => await OnLoadAsync();
         _btnAccept.Click += (_, _) => OnAccept();
         _btnAttach.Click += (_, _) => OnAttach();
-        _btnExport.Click += async (_, _) => await OnExportAsync();
+        _btnExport.Click += async (_, _) => await OnExportAsync(false);
+        _btnPrint.Click += async (_, _) => await OnExportAsync(true);
         _btnRules.Click += (_, _) => OnOpenRules();
         _btnRelease.Click += (_, _) => OnRelease();
         _chkOnlyReview.CheckedChanged += (_, _) => Rebind();
@@ -258,7 +260,7 @@ public sealed class MainForm : Form
         RefreshKeepSelection();
     }
 
-    private async Task OnExportAsync()
+    private async Task OnExportAsync(bool printNow)
     {
         if (_session is null) return;
         if (string.IsNullOrWhiteSpace(_txtOutput.Text))
@@ -279,7 +281,7 @@ public sealed class MainForm : Form
         SaveSettings();
         var options = BuildOptions();
         var progress = new Progress<string>(m => _lblStatus.Text = m);
-        bool print = _chkPrint.Checked;
+        bool print = _chkPrint.Checked || printNow;
 
         SetBusy(true);
         try
@@ -288,6 +290,13 @@ public sealed class MainForm : Form
             var result = await Task.Run(() => _service.Export(session, options, print, progress));
             Rebind();
             _lblStatus.Text = $"Export fertig: {result.FirstNumber} bis {result.LastNumber}, {result.ReceiptCount} Beleg(e).";
+
+            if (printNow && result.PrintPackage is not null)
+            {
+                _lblStatus.Text = "Druckpaket wird an den Drucker gesendet ...";
+                PrintPdf(result.PrintPackage);
+                return;
+            }
 
             var msg = $"Fertig.\n\nKontoauszug: {Path.GetFileName(result.StatementPdf)}\nListe: {Path.GetFileName(result.Excel)}\n" +
                       $"Belege: {result.ReceiptCount} gestempelt" + (result.PrintPackage is null ? "" : $"\nDruckpaket: {Path.GetFileName(result.PrintPackage)}") +
@@ -303,6 +312,19 @@ public sealed class MainForm : Form
         finally
         {
             SetBusy(false);
+        }
+    }
+
+    /// <summary>Schickt das PDF über das Windows-Druckverb an den Standarddrucker; klappt das nicht, wird es zum Drucken geöffnet.</summary>
+    private void PrintPdf(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { Verb = "print", UseShellExecute = true, CreateNoWindow = true });
+        }
+        catch (Exception)
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         }
     }
 
@@ -426,6 +448,7 @@ public sealed class MainForm : Form
         bool has = _session is not null;
         var b = SelectedBooking();
         _btnExport.Enabled = has;
+        _btnPrint.Enabled = has;
         _btnRelease.Enabled = has;
         _btnAttach.Enabled = b is not null;
         _btnAccept.Enabled = b?.Match is { Accepted: false, Status: not MatchStatus.Ok };
@@ -436,6 +459,7 @@ public sealed class MainForm : Form
         UseWaitCursor = busy;
         _btnLoad.Enabled = !busy;
         _btnExport.Enabled = !busy && _session is not null;
+        _btnPrint.Enabled = !busy && _session is not null;
         _btnAccept.Enabled = !busy && _btnAccept.Enabled;
         _btnAttach.Enabled = !busy && _btnAttach.Enabled;
         _btnRelease.Enabled = !busy && _session is not null;
