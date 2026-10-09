@@ -77,7 +77,12 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
 - **Das Layout der CAO-Rechnungs-PDFs wurde noch nicht gesehen.** Betrag und Empfänger werden über die Einstellungen
   im Abschnitt `rechnung` gefunden und müssen an einer echten Rechnung kalibriert werden. Betrag nicht lesbar →
   Status „Rechnungsbetrag nicht lesbar“, es wird nie geraten.
-- Amazon-Belege werden nur über die Bestellnummer zugeordnet (kein Betragsvergleich).
+- Amazon-Belege: Bestellnummer **und** Betrag müssen passen. Der Amazon-Ordner darf die Wochenexporte enthalten
+  (ZIP-Dateien oder entpackte Ordner je Bestellung, auch mehrere Wochen gemischt). Rechnungen und Gutschriften
+  (Rechnungskorrektur) werden zugeordnet; die „Übersicht zur Bestellung“ ist keine Rechnung und dient nur als
+  Betragsprüfung. Rechnungen von Marktplatz-Verkäufern ohne lesbaren Betrag werden nur zugeordnet, wenn die
+  Bestellübersicht denselben Betrag zeigt (Hinweis „bitte prüfen“). Das Layout wurde an einem Wochenexport geprüft,
+  die PdfPig-Textausgabe aber noch nicht auf Windows.
 - Eingangsrechnungen aus Mail-Postfächern (web.de, Gmail, Roundcube) werden noch nicht automatisch abgeholt;
   die PDFs müssen im Amazon-/Belegordner liegen.
 - Echte Kontoauszüge, Rechnungen und Excel-Ausgaben sind per `.gitignore` vom Repo ausgeschlossen.

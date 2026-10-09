@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SonOG.Buchhaltung.Core.Invoices;
@@ -35,6 +36,8 @@ public sealed class DocumentScanner
         public long Ticks { get; set; }
         public long Size { get; set; }
         public List<string> Orders { get; set; } = new();
+        public ReceiptKind Kind { get; set; }
+        public decimal? Amount { get; set; }
     }
 
     private readonly string _cacheDir;
@@ -108,12 +111,12 @@ public sealed class DocumentScanner
 
     public ScanResult<ReceiptDocument> ScanReceipts(string folder, IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(_cacheDir, "belege.cache.json");
+        var cachePath = Path.Combine(_cacheDir, "belege2.cache.json");
         var cache = LoadCache<ReceiptCacheEntry>(cachePath);
         var fresh = new ConcurrentDictionary<string, ReceiptCacheEntry>();
 
         var result = new ScanResult<ReceiptDocument>();
-        var files = Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories).ToList();
+        var files = ReceiptFiles(folder, result.Problems);
         var docs = new ConcurrentBag<ReceiptDocument>();
         var problems = new ConcurrentBag<string>();
         int done = 0;
@@ -131,11 +134,14 @@ public sealed class DocumentScanner
                 try
                 {
                     var text = PdfWordReader.ReadAllText(file);
+                    var (kind, amount) = AmazonMatcher.Analyze(text, file);
                     entry = new ReceiptCacheEntry
                     {
                         Ticks = info.LastWriteTimeUtc.Ticks,
                         Size = info.Length,
                         Orders = AmazonMatcher.FindOrderNumbers(text).ToList(),
+                        Kind = kind,
+                        Amount = amount,
                     };
                 }
                 catch (Exception ex)
@@ -145,7 +151,7 @@ public sealed class DocumentScanner
                 }
             }
             fresh[file] = entry;
-            docs.Add(new ReceiptDocument(file, entry.Orders));
+            docs.Add(new ReceiptDocument(file, entry.Orders, entry.Kind, entry.Amount));
 
             var n = Interlocked.Increment(ref done);
             if (n % 50 == 0) progress?.Report($"Belege lesen: {n} / {files.Count}");
@@ -155,6 +161,38 @@ public sealed class DocumentScanner
         result.Items.AddRange(docs);
         result.Problems.AddRange(problems);
         return result;
+    }
+
+    /// <summary>
+    /// PDFs im Belegordner (auch in Unterordnern, z. B. ein Ordner je Bestellung). ZIP-Dateien - etwa die
+    /// Amazon-Wochenexporte - werden einmal in den Cache-Ordner entpackt und wie ein Ordner behandelt.
+    /// </summary>
+    private List<string> ReceiptFiles(string folder, List<string> problems)
+    {
+        var files = Directory.EnumerateFiles(folder, "*.pdf", SearchOption.AllDirectories).ToList();
+        foreach (var zip in Directory.EnumerateFiles(folder, "*.zip", SearchOption.AllDirectories))
+        {
+            try
+            {
+                var info = new FileInfo(zip);
+                var key = $"{Path.GetFileNameWithoutExtension(zip)}_{info.Length}_{info.LastWriteTimeUtc.Ticks}";
+                foreach (var c in Path.GetInvalidFileNameChars()) key = key.Replace(c, '_');
+                var target = Path.Combine(_cacheDir, "zip", key);
+                if (!Directory.Exists(target))
+                {
+                    var tmp = target + ".tmp";
+                    if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+                    ZipFile.ExtractToDirectory(zip, tmp);   // verweigert Pfade außerhalb des Zielordners
+                    Directory.Move(tmp, target);
+                }
+                files.AddRange(Directory.EnumerateFiles(target, "*.pdf", SearchOption.AllDirectories));
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                problems.Add($"{Path.GetFileName(zip)}: {ex.Message}");
+            }
+        }
+        return files;
     }
 
     private static Dictionary<string, T> LoadCache<T>(string path)

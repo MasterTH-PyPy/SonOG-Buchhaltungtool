@@ -351,8 +351,8 @@ public class PaymentReconcilerTests
         var missing = Fx.Classify("Lastschrift", -8.50m, "AMAZON BUSINESS EU SARL 305-0682748-5941962 AMZNBusiness");
         var receipts = new[]
         {
-            new ReceiptDocument("a.pdf", new[] { "305-7892042-7991539" }),
-            new ReceiptDocument("b.pdf", new[] { "305-1111111-2222222" }),
+            new ReceiptDocument("a.pdf", new[] { "305-7892042-7991539" }, ReceiptKind.Rechnung, 50.34m),
+            new ReceiptDocument("b.pdf", new[] { "305-1111111-2222222" }, ReceiptKind.Rechnung, 9.99m),
         };
 
         AmazonMatcher.Assign(new[] { charge, missing }, receipts);
@@ -360,6 +360,120 @@ public class PaymentReconcilerTests
         Assert.Equal(new[] { "a.pdf" }, charge.ReceiptFiles.ToArray());
         Assert.Empty(missing.ReceiptFiles);
         Assert.Contains("305-0682748-5941962", missing.ReceiptNote);
+    }
+
+    private static ReceiptDocument Doc(string file, string order, ReceiptKind kind, decimal? amount) =>
+        new(file, new[] { order }, kind, amount);
+
+    [Fact]
+    public void Amazon_order_with_two_invoices_and_two_charges_is_matched_by_amount()
+    {
+        const string o = "305-1000000-0000001";
+        var b1 = Fx.Classify("Lastschrift", -15.99m, $"AMAZON BUSINESS EU SARL {o} AMZNBusiness");
+        var b2 = Fx.Classify("Lastschrift", -8.50m, $"AMAZON BUSINESS EU SARL {o} AMZNBusiness");
+        var docs = new[]
+        {
+            Doc("x/" + o + ".pdf", o, ReceiptKind.Bestelluebersicht, 24.49m),
+            Doc("x/DEA.pdf", o, ReceiptKind.Rechnung, 8.50m),
+            Doc("x/DEB.pdf", o, ReceiptKind.Rechnung, 15.99m),
+        };
+
+        var res = AmazonMatcher.Assign(new[] { b1, b2 }, docs);
+
+        Assert.Equal(new[] { "x/DEB.pdf" }, b1.ReceiptFiles.ToArray());
+        Assert.Equal(new[] { "x/DEA.pdf" }, b2.ReceiptFiles.ToArray());
+        Assert.Empty(res.UnusedDocuments);
+    }
+
+    [Fact]
+    public void Amazon_refund_booking_gets_the_credit_note_not_the_original_invoice()
+    {
+        const string o = "305-1000000-0000002";
+        var refund = Fx.Classify("Gutschrift", 20.38m, $"AMAZON PAYMENTS EUROPE S.C.A. {o} AMZN Mkt DE");
+        var docs = new[]
+        {
+            Doc("x/INV.pdf", o, ReceiptKind.Rechnung, 20.38m),
+            Doc("x/CRN.pdf", o, ReceiptKind.Gutschrift, -20.38m),
+        };
+
+        var res = AmazonMatcher.Assign(new[] { refund }, docs);
+
+        Assert.Equal(new[] { "x/CRN.pdf" }, refund.ReceiptFiles.ToArray());
+        Assert.Single(res.UnusedDocuments);
+    }
+
+    [Fact]
+    public void Overview_page_alone_is_not_a_receipt()
+    {
+        const string o = "305-1000000-0000003";
+        var b = Fx.Classify("Lastschrift", -19.90m, $"AMAZON PAYMENTS EUROPE S.C.A. {o} AMZN Mkt DE");
+
+        AmazonMatcher.Assign(new[] { b }, new[] { Doc("x/" + o + ".pdf", o, ReceiptKind.Bestelluebersicht, 19.90m) });
+
+        Assert.Empty(b.ReceiptFiles);
+        Assert.Contains("Bestellübersicht", b.ReceiptNote);
+    }
+
+    [Fact]
+    public void Seller_invoice_without_readable_amount_is_used_when_overview_amount_matches()
+    {
+        const string o = "305-1000000-0000004";
+        var b = Fx.Classify("Lastschrift", -19.90m, $"AMAZON PAYMENTS EUROPE S.C.A. {o} AMZN Mkt DE");
+        var docs = new[]
+        {
+            Doc("x/" + o + ".pdf", o, ReceiptKind.Bestelluebersicht, 19.90m),
+            Doc("x/XRE-1.pdf", o, ReceiptKind.Rechnung, null),
+        };
+
+        AmazonMatcher.Assign(new[] { b }, docs);
+
+        Assert.Equal(new[] { "x/XRE-1.pdf" }, b.ReceiptFiles.ToArray());
+        Assert.Contains("prüfen", b.ReceiptNote);
+    }
+
+    [Fact]
+    public void Wrong_amount_is_reported_with_available_amounts()
+    {
+        const string o = "305-1000000-0000005";
+        var b = Fx.Classify("Lastschrift", -30.00m, $"AMAZON PAYMENTS EUROPE S.C.A. {o} AMZN Mkt DE");
+
+        AmazonMatcher.Assign(new[] { b }, new[] { Doc("x/A.pdf", o, ReceiptKind.Rechnung, 13.00m) });
+
+        Assert.Empty(b.ReceiptFiles);
+        Assert.Contains("13,00", b.ReceiptNote);
+    }
+
+    [Fact]
+    public void Same_export_twice_does_not_duplicate_receipts()
+    {
+        const string o = "305-1000000-0000006";
+        var b = Fx.Classify("Lastschrift", -5.00m, $"AMAZON BUSINESS EU SARL {o} AMZNBusiness");
+        var docs = new[]
+        {
+            Doc("w1/DEX.pdf", o, ReceiptKind.Rechnung, 5.00m),
+            Doc("w2/DEX.pdf", o, ReceiptKind.Rechnung, 5.00m),
+        };
+
+        var res = AmazonMatcher.Assign(new[] { b }, docs);
+
+        Assert.Single(b.ReceiptFiles);
+        Assert.Empty(res.UnusedDocuments);
+    }
+
+    [Fact]
+    public void Receipt_kind_and_amount_are_read_from_text()
+    {
+        var inv = AmazonMatcher.Analyze("Rechnung Seite 1 von 1 Amazon Business EU ... Rechnungssumme 15,99 € ... Zahlbetrag 15,99 €", "DE1.pdf");
+        Assert.Equal((ReceiptKind.Rechnung, 15.99m), inv);
+
+        var crn = AmazonMatcher.Analyze("Rechnungskorrektur Seite 1 von 2 ... Zahlbetrag -20,05 €", "DE2.pdf");
+        Assert.Equal((ReceiptKind.Gutschrift, -20.05m), crn);
+
+        var ov = AmazonMatcher.Analyze("Übersicht zur Bestellung #305-1000000-0000001 Gesamtbestellwert:  1.078,69 EUR", "305-1000000-0000001.pdf");
+        Assert.Equal((ReceiptKind.Bestelluebersicht, 1078.69m), ov);
+
+        var seller = AmazonMatcher.Analyze("Rechnung Beleg-Nr: XRE-1 ... Gesamt Netto 16,72 € Gesamt Brutto 19,90 €", "XRE-1.pdf");
+        Assert.Equal((ReceiptKind.Rechnung, 19.90m), seller);
     }
 
     [Fact]

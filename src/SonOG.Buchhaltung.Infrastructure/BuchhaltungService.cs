@@ -120,7 +120,9 @@ public sealed class BuchhaltungService
         {
             progress?.Report("Amazon-Belege lesen ...");
             var receipts = scanner.ScanReceipts(o.AmazonFolder, progress, ct);
-            AmazonMatcher.Assign(statement.Bookings, receipts.Items);
+            var assigned = AmazonMatcher.Assign(statement.Bookings, receipts.Items);
+            if (assigned.UnusedDocuments.Count > 0)
+                warnings.Add($"{assigned.UnusedDocuments.Count} Amazon-Beleg(e) im Ordner gehören zu keiner Buchung dieses Auszugs (z. B. andere Monate).");
             warnings.AddRange(receipts.Problems.Take(5).Select(p => "Beleg nicht lesbar: " + p));
         }
         else
