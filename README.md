@@ -41,9 +41,8 @@ dotnet run --project src/SonOG.Buchhaltung.App
 3. Prüffälle bearbeiten: **Vorschlag übernehmen** (z. B. Zahlendreher), **Beleg zuordnen …** (von Hand), oder Regeln anpassen.
 4. **Exportieren …** vergibt die Nummern endgültig und schreibt gestempelte Kopien, Excel und Druckpaket.
 
-Der **Nummernkreis** (von/bis) ist im Hauptfenster einstellbar, damit es keine Überschneidungen mit anderen Nummern gibt:
-liegt der Zähler unter „von“, wird er hochgesetzt; reicht der Bereich bis „bis“ nicht für alle Buchungen eines Auszugs, wird
-nichts vergeben und der Export verweigert, bis ein neuer Bereich eingestellt ist.
+Die **erste Belegnummer** ist im Hauptfenster einstellbar (damit es keine Überschneidungen mit anderen Nummern gibt): liegt der Zähler
+darunter, wird er hochgesetzt, liegt er darüber, läuft er einfach weiter.
 
 Die Nummern merkt sich `nummern.json` unter `%AppData%\SonOG-Buchhaltung`. Derselbe Auszug bekommt bei erneutem Export
 dieselben Nummern. Ändert sich die Buchungsanzahl, wird der Export verweigert, bis die Nummern mit **Nummern freigeben**

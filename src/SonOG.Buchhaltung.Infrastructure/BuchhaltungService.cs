@@ -22,7 +22,6 @@ public sealed class ServiceOptions
     public List<MailAccount> MailAccounts { get; set; } = new();
     public bool FetchMail { get; set; }
     public int NumberFrom { get; set; } = 1;
-    public int NumberTo { get; set; } = 9999;
     public int MailDaysBefore { get; set; } = 60;
     public int MailDaysAfter { get; set; } = 30;
 }
@@ -93,7 +92,7 @@ public sealed class BuchhaltungService
 
         var key = Path.GetFileNameWithoutExtension(o.StatementPath);
         var state = NumberingState.Load(StatePath);
-        int numFrom = Math.Max(1, o.NumberFrom), numTo = Math.Max(numFrom, o.NumberTo);
+        int numFrom = Math.Max(1, o.NumberFrom), numTo = int.MaxValue;
         var first = state.PeekStart(statement.Year, key, numFrom);
         AssignNumbers(statement, rules, first);
 

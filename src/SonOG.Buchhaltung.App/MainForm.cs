@@ -18,7 +18,6 @@ public sealed class MainForm : Form
     private readonly TextBox _txtEingang = new() { Dock = DockStyle.Fill };
     private readonly TextBox _txtOutput = new() { Dock = DockStyle.Fill };
     private readonly NumericUpDown _numFrom = new() { Minimum = 1, Maximum = 999999, Value = 1, Width = 80 };
-    private readonly NumericUpDown _numTo = new() { Minimum = 1, Maximum = 999999, Value = 9999, Width = 80 };
     private readonly CheckBox _chkOpenFrom = new() { Text = "nur ab", AutoSize = true, Margin = new Padding(3, 5, 6, 3) };
     private readonly DateTimePicker _dtOpenFrom = new() { Format = DateTimePickerFormat.Short, Width = 130, Enabled = false };
     private readonly CheckBox _chkOnlyReview = new() { Text = "Nur Prüffälle anzeigen", AutoSize = true };
@@ -78,13 +77,10 @@ public sealed class MainForm : Form
         _chkOpenFrom.CheckedChanged += (_, _) => _dtOpenFrom.Enabled = _chkOpenFrom.Checked;
 
         inputs.RowCount++;
-        inputs.Controls.Add(new Label { Text = "Nummernkreis:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 6) }, 0, inputs.RowCount - 1);
+        inputs.Controls.Add(new Label { Text = "Erste Belegnummer:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 6) }, 0, inputs.RowCount - 1);
         var range = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0), Anchor = AnchorStyles.Left };
-        range.Controls.Add(new Label { Text = "von", AutoSize = true, Margin = new Padding(3, 6, 3, 0) });
-        range.Controls.Add(_numFrom);
-        range.Controls.Add(new Label { Text = "bis", AutoSize = true, Margin = new Padding(6, 6, 3, 0) });
-        range.Controls.Add(_numTo);
-        range.Controls.Add(new Label { Text = "(kleinste/größte laufende Nummer; ist der Zähler darunter, wird er hochgesetzt)", AutoSize = true, Margin = new Padding(8, 6, 0, 0) });
+                range.Controls.Add(_numFrom);
+        range.Controls.Add(new Label { Text = "(ist der Zähler darunter, wird er hochgesetzt; sonst läuft er weiter)", AutoSize = true, Margin = new Padding(8, 6, 0, 0) });
         inputs.Controls.Add(range, 1, inputs.RowCount - 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
@@ -217,7 +213,6 @@ public sealed class MainForm : Form
         _txtOutput.Text = _settings.OutputFolder;
         _chkMail.Checked = _settings.FetchMail;
         _numFrom.Value = Math.Clamp(_settings.NumberFrom, 1, 999999);
-        _numTo.Value = Math.Clamp(_settings.NumberTo, 1, 999999);
         if (DateOnly.TryParse(_settings.OpenFrom, out var d))
         {
             _dtOpenFrom.Value = d.ToDateTime(TimeOnly.MinValue);
@@ -238,7 +233,6 @@ public sealed class MainForm : Form
         _settings.OutputFolder = _txtOutput.Text.Trim();
         _settings.FetchMail = _chkMail.Checked;
         _settings.NumberFrom = (int)_numFrom.Value;
-        _settings.NumberTo = (int)_numTo.Value;
         _settings.OpenFrom = _chkOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value).ToString("yyyy-MM-dd") : "";
         try { _settings.Save(); } catch (IOException) { }
     }
@@ -252,7 +246,6 @@ public sealed class MainForm : Form
         MailAccounts = _settings.MailAccounts,
         FetchMail = _chkMail.Checked && _settings.MailAccounts.Count > 0,
         NumberFrom = (int)_numFrom.Value,
-        NumberTo = (int)_numTo.Value,
         MailDaysBefore = _settings.MailDaysBefore,
         MailDaysAfter = _settings.MailDaysAfter,
         OpenFrom = _chkOpenFrom.Checked ? DateOnly.FromDateTime(_dtOpenFrom.Value) : null,

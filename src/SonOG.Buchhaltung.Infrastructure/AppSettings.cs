@@ -22,9 +22,8 @@ public sealed class AppSettings
 
     public bool FetchMail { get; set; }
 
-    /// <summary>Nummernkreis der Belegnummern (kleinste/größte laufende Nummer), damit es keine Überschneidungen gibt.</summary>
+    /// <summary>Erste Belegnummer (der Zähler wird mindestens auf diesen Wert gesetzt), damit es keine Überschneidungen gibt.</summary>
     public int NumberFrom { get; set; } = 1;
-    public int NumberTo { get; set; } = 9999;
 
     /// <summary>Mail-Zeitraum: Tage vor der ersten und nach der letzten Buchung.</summary>
     public int MailDaysBefore { get; set; } = 60;
