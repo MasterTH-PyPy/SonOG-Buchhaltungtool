@@ -4,7 +4,7 @@
     <RootNamespace>SonOG.Buchhaltung.Infrastructure</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="UglyToad.PdfPig" Version="0.1.9" />
+    <PackageReference Include="PdfPig" Version="0.1.9" />
     <PackageReference Include="PDFsharp" Version="6.1.1" />
     <PackageReference Include="ClosedXML" Version="0.104.2" />
   </ItemGroup>
