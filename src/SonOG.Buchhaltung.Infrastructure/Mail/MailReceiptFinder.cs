@@ -25,7 +25,7 @@ public static class MailReceiptFinder
     public static string MailFolder(string dataDir) => Path.Combine(dataDir, "mail");
 
     public static List<string> Run(IEnumerable<MailAccount> accounts, IReadOnlyList<Booking> bookings, string targetRoot,
-        IProgress<string>? progress = null, CancellationToken ct = default)
+        IProgress<string>? progress = null, CancellationToken ct = default, List<string>? log = null)
     {
         var problems = new List<string>();
         var todo = bookings.Where(b => !b.Beleglos && b.ReceiptFiles.Count == 0
@@ -54,7 +54,7 @@ public static class MailReceiptFinder
                     {
                         ct.ThrowIfCancellationRequested();
                         progress?.Report($"Mails durchsuchen ({acc.Name}): {b.Number} {++i}");
-                        try { FindFor(b, folder, dir, ct); }
+                        try { FindFor(b, folder, dir, ct, log, $"{acc.Name}/{folderName}"); }
                         catch (OperationCanceledException) { throw; }
                         catch (Exception ex) { problems.Add($"{acc.Name}: {b.Number}: {ex.Message}"); }
                     }
@@ -71,10 +71,11 @@ public static class MailReceiptFinder
         return problems;
     }
 
-    private static void FindFor(Booking b, IMailFolder folder, string dir, CancellationToken ct)
+    private static void FindFor(Booking b, IMailFolder folder, string dir, CancellationToken ct, List<string>? log, string where)
     {
         var keywords = MerchantKeywords.Extract(b.Text).ToList();
         if (b.Category.IsAmazon() && !keywords.Contains("amazon", StringComparer.OrdinalIgnoreCase)) keywords.Insert(0, "amazon");
+        log?.Add($"{b.Number} [{where}] Suchwörter: {(keywords.Count > 0 ? string.Join(", ", keywords.Take(2)) : "-")}{(b.AmazonOrder.Length > 0 ? " + Bestellnr. " + b.AmazonOrder : "")} | Buchungstext: {b.Text.Replace('\n', ' ')}");
         if (keywords.Count == 0 && b.AmazonOrder.Length == 0) return;
 
         var date = b.Date.ToDateTime(TimeOnly.MinValue);
@@ -94,6 +95,7 @@ public static class MailReceiptFinder
         if (who is null) return;
 
         var uids = folder.Search(window.And(who), ct);
+        log?.Add($"    Mails im Zeitfenster {date.AddDays(-DaysBefore):dd.MM.yyyy}-{date.AddDays(DaysAfter):dd.MM.yyyy}: {uids.Count}");
         if (uids.Count == 0) return;
 
         var candidates = new List<Candidate>();
@@ -106,6 +108,7 @@ public static class MailReceiptFinder
         }
 
         var withPdf = candidates.Where(c => c.Pdfs.Count > 0).ToList();
+        foreach (var c in candidates) log?.Add($"    Mail {c.Date:dd.MM.yyyy} von {c.Sender}: {c.Pdfs.Count} PDF-Anhang/Anhänge");
         if (withPdf.Count == 0)
         {
             var c = candidates.OrderBy(x => Math.Abs((x.Date - date).TotalDays)).First();
