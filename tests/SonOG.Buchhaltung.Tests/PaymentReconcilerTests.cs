@@ -486,6 +486,13 @@ public class PaymentReconcilerTests
     }
 
     [Fact]
+    public void Compound_noise_words_are_skipped()
+    {
+        var k = MerchantKeywords.Extract("SEPA-Lastschrift Sterndiscoun Rechnung 351024");
+        Assert.Equal(new[] { "Sterndiscoun" }, k.ToArray());
+    }
+
+    [Fact]
     public void Reference_numbers_are_read_from_booking_text()
     {
         var r = MerchantKeywords.ReferenceNumbers("Musterfirma Rechnung RE-2026-0815 vom 01.09. Kundennr 12");

@@ -22,7 +22,7 @@ public static class MerchantKeywords
         foreach (Match m in WordRx.Matches(bookingText))
         {
             var w = m.Value.Trim('-');
-            if (w.Length < 4 || Stop.Contains(w)) continue;
+            if (w.Length < 4 || Stop.Contains(w) || w.Split('-').Any(part => Stop.Contains(part))) continue;
             if (result.Contains(w, StringComparer.OrdinalIgnoreCase)) continue;
             result.Add(w);
             if (result.Count >= max) break;
