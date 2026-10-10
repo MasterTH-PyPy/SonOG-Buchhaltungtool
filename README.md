@@ -158,7 +158,8 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   die PdfPig-Textausgabe aber noch nicht auf Windows. Auch der Export „von/bis“ (eine Datei je Rechnung, Name
   `JJJJMMTT_Tax Invoice_<Bestellnummer>.pdf`) wird gelesen; die Bestellnummer wird zusätzlich aus dem Dateinamen genommen.
   Steht der Betrag nur im Belegtext (nicht als „Zahlbetrag“ erkannt), wird bei eindeutiger Bestellnummer trotzdem
-  zugeordnet (Hinweis „bitte prüfen“).
+  zugeordnet (Hinweis „bitte prüfen“). Als letzter Versuch wird ein Teil der Bestellnummer (eine 7-stellige Gruppe)
+  rekursiv im Dateipfad und Belegtext des Eingangsordners gesucht (ZIPs werden vorher entpackt); der Betrag muss passen.
 - **Eingangsordner, sonstige Lieferanten:** Zugeordnet wird nur, wenn der **Betrag auf den Cent** im PDF steht
   und dazu die im Buchungstext genannte Rechnungsnummer oder der Shop-/Verkäufername. Passt nur die Rechnungsnummer, aber nicht der
   Betrag, oder nur der Betrag ohne Namen, gibt es einen Hinweis, aber keine Zuordnung.

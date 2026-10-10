@@ -594,6 +594,21 @@ public class PaymentReconcilerTests
         Assert.Single(b.ReceiptFiles);
         Assert.Contains("bitte prüfen", b.ReceiptNote);
     }
+
+    [Fact]
+    public void Partial_order_number_in_path_with_matching_amount_is_assigned()
+    {
+        const string o = "303-0331003-9067513";
+        var b = Fx.Classify("Lastschrift", -28.99m, $"AMAZON BUSINESS EU SARL {o} AMZNBusiness 1O");
+        var other = Fx.Classify("Lastschrift", -10.00m, "AMAZON BUSINESS EU SARL 303-0000001-0000002 AMZNBusiness 1O");
+        var doc = new ReceiptDocument("x/zip/Rechnung_0331003.pdf", new[] { "999-9999999-9999999" }, ReceiptKind.Rechnung, 28.99m);
+
+        AmazonMatcher.Assign(new[] { b, other }, new[] { doc });
+
+        Assert.Single(b.ReceiptFiles);
+        Assert.Contains("Teil der Bestellnummer", b.ReceiptNote);
+        Assert.Empty(other.ReceiptFiles);
+    }
 }
 
 public class AcceptSuggestionTests

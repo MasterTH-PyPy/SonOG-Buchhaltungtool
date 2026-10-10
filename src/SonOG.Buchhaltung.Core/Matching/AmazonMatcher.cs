@@ -211,6 +211,22 @@ public static class AmazonMatcher
             done.Add(b);
         }
 
+        // 3c. Teilnummer-Suche: Bestellnummer taucht nicht (vollständig) im Beleg auf - dann genügt ein Teil davon
+        // (7-stellige Gruppe) im Dateipfad oder Belegtext, solange der Betrag auf den Cent passt.
+        foreach (var b in open.Where(b => !done.Contains(b)))
+        {
+            var parts = b.AmazonOrder.Split('-').Where(p => p.Length == 7).ToList();
+            var cand = docs.Where(d => IsReal(d) && !used.Contains(d)
+                    && parts.Any(p => d.FilePath.Contains(p, StringComparison.OrdinalIgnoreCase) || d.SearchText.Contains(p, StringComparison.Ordinal))
+                    && (d.BookingAmount == b.Amount || d.Amount is null && d.AllAmounts is not null && d.AllAmounts.Contains(Math.Abs(b.Amount))))
+                .ToList();
+            if (cand.Count != 1) continue;
+            used.Add(cand[0]);
+            b.ReceiptFiles.Add(cand[0].FilePath);
+            b.ReceiptNote = "Über Teil der Bestellnummer gefunden (Betrag passt) - bitte prüfen";
+            done.Add(b);
+        }
+
         // 4. Nicht zugeordnete Buchungen: sagen, woran es liegt.
         foreach (var b in open.Where(b => !done.Contains(b)))
         {
