@@ -374,7 +374,7 @@ public sealed class BuchhaltungService
         {
             progress?.Report("Druckpaket zusammenstellen ...");
             result.PrintPackage = Path.Combine(o.OutputFolder, stem + "_druckpaket.pdf");
-            // Rückwärts nach Auszugsseiten: letzte Seite zuerst, danach deren Belege (in Buchungsreihenfolge),
+            // Rückwärts nach Auszugsseiten: letzte Seite zuerst, danach deren Belege (ebenfalls rückwärts: letzte Buchung zuerst),
             // dann die vorletzte Seite mit ihren Belegen usw. So liegt der Stapel nach dem Druck richtig herum.
             var items = new List<(string File, int? Page)>();
             if (feeBooking is null) // keine Zuordnung möglich: Anlageseiten wie normale Seiten ganz am Ende des Auszugs, also zuerst
@@ -382,7 +382,7 @@ public sealed class BuchhaltungService
             foreach (var pageGroup in bookings.GroupBy(b => b.PageIndex).OrderByDescending(g => g.Key))
             {
                 items.Add((result.StatementPdf, pageGroup.Key));
-                foreach (var x in stampedByBooking.Where(x => x.Booking.PageIndex == pageGroup.Key).OrderBy(x => bookings.IndexOf(x.Booking)))
+                foreach (var x in stampedByBooking.Where(x => x.Booking.PageIndex == pageGroup.Key).Reverse())
                     items.Add((x.File, null));
                 if (feeBooking is not null && pageGroup.Contains(feeBooking))
                     foreach (var i in extraPages) items.Add((result.StatementPdf, i));

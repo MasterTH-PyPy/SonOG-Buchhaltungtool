@@ -8,7 +8,7 @@ WinForms-Werkzeug (.NET 8) für die Firmenbuchhaltung:
    (CAO-Rechnungsordner) verglichen: Betrag, Empfänger, Sammelzahlungen, Zahlendreher.
 3. **Amazon-Belege zuordnen** – über die Bestellnummer (`305-1234567-1234567`).
 4. **Beleg stempeln und Druckpaket** – die laufende Nummer wird auf die Rechnung/den Beleg gestempelt; ein PDF
-   mit Kontoauszug und allen Belegen wird zusammengestellt - **rückwärts**: letzte Auszugsseite, dann deren Belege,
+   mit Kontoauszug und allen Belegen wird zusammengestellt - **rückwärts**: letzte Auszugsseite, dann deren Belege (ebenfalls rückwärts, letzte Nummer zuerst),
    dann die vorletzte Seite mit ihren Belegen usw. Die Anlageseite(n) hinter der letzten Buchungsseite
    (Entgeltabrechnung) bekommen die Nummer der Entgelt-Buchung und werden direkt hinter deren Seite einsortiert. Der Button **Drucken (rückwärts) – Vorschau** exportiert und öffnet das PDF
    im Standard-PDF-Programm; dort siehst du genau, was gedruckt würde, und druckst mit Strg+P.
