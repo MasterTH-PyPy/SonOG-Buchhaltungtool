@@ -116,7 +116,7 @@ public sealed class DocumentScanner
 
     public ScanResult<ReceiptDocument> ScanReceipts(string folder, IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(_cacheDir, "belege5.cache.json");
+        var cachePath = Path.Combine(_cacheDir, "belege6.cache.json");
         var cache = LoadCache<ReceiptCacheEntry>(cachePath);
         var fresh = new ConcurrentDictionary<string, ReceiptCacheEntry>();
 
@@ -161,7 +161,7 @@ public sealed class DocumentScanner
                     {
                         Ticks = info.LastWriteTimeUtc.Ticks,
                         Size = info.Length,
-                        Orders = AmazonMatcher.FindOrderNumbers(text).ToList(),
+                        Orders = AmazonMatcher.FindOrderNumbers(text, file).ToList(),
                         Kind = kind,
                         Amount = amount,
                         AllAmounts = AmazonMatcher.FindAmounts(text).ToList(),

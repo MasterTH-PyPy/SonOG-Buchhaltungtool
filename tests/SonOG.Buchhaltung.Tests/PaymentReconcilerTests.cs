@@ -563,6 +563,37 @@ public class PaymentReconcilerTests
         var found = AmazonMatcher.FindOrderNumbers("Bestellnummer 305-7892042-7991539 vom 29.09.2026, Retoure 305-7892042-7991539 und 303-0331003-9067513");
         Assert.Equal(2, found.Count);
     }
+
+    [Fact]
+    public void Order_number_is_found_without_spaces_and_in_the_file_name()
+    {
+        // PdfPig kann Wörter ohne Leerzeichen liefern: "Bestellnummer303-..." (kein \b zwischen Buchstabe und Ziffer)
+        Assert.Equal(1, AmazonMatcher.FindOrderNumbers("Bestellnummer303-0331003-9067513Auftraggeber").Count);
+        var viaName = AmazonMatcher.FindOrderNumbers("kein Text", "20260909_Tax Invoice_303-0331003-9067513.pdf");
+        Assert.Equal(1, viaName.Count);
+    }
+
+    [Fact]
+    public void Tax_Invoice_export_file_is_a_receipt_even_when_the_text_is_run_together()
+    {
+        var text = "RechnungSeite 1 von 1Amazon Business EU ... RechnungssummeX 28,99 € Bestellnummer303-0331003-9067513 Zahlbetrag28,99 €";
+        var (kind, amount) = AmazonMatcher.Analyze(text, "20260909_Tax Invoice_303-0331003-9067513.pdf");
+        Assert.True(kind == ReceiptKind.Rechnung);
+        Assert.Equal(28.99m, amount);
+    }
+
+    [Fact]
+    public void Amount_only_in_text_matches_with_a_check_note()
+    {
+        const string o = "303-0331003-9067513";
+        var b = Fx.Classify("Lastschrift", -28.99m, $"AMAZON BUSINESS EU SARL {o} AMZNBusiness 1O");
+        var doc = new ReceiptDocument("x/20260909_Tax Invoice_" + o + ".pdf", new[] { o }, ReceiptKind.Rechnung, null, new[] { 28.99m, 24.36m });
+
+        AmazonMatcher.Assign(new[] { b }, new[] { doc });
+
+        Assert.Single(b.ReceiptFiles);
+        Assert.Contains("bitte prüfen", b.ReceiptNote);
+    }
 }
 
 public class AcceptSuggestionTests

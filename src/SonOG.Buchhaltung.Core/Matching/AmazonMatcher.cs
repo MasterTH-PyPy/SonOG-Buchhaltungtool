@@ -43,12 +43,12 @@ public sealed class AmazonAssignResult
 
 public static class AmazonMatcher
 {
-    private static readonly Regex OrderRx = new(@"\b(\d{3}-\d{7}-\d{7})\b", RegexOptions.Compiled);
+    private static readonly Regex OrderRx = new(@"(?<!\d)(\d{3}-\d{7}-\d{7})(?!\d)", RegexOptions.Compiled);
 
     private static readonly Regex[] AmountRx =
     {
-        Rx(@"Zahlbetrag\s*(-?\s*[\d.]+,\d{2})"),
-        Rx(@"Rechnungssumme\s*(-?\s*[\d.]+,\d{2})"),
+        Rx(@"Zahl\s*betrag\s*:?\s*(-?\s*[\d.]+,\d{2})"),
+        Rx(@"Rechnungs\s*summe\s*:?\s*(-?\s*[\d.]+,\d{2})"),
         Rx(@"Gesamt\s*Brutto\s*:?\s*(-?\s*[\d.]+,\d{2})"),
     };
     private static readonly Regex OverviewAmountRx = Rx(@"Gesamtbestellwert:?\s*(-?\s*[\d.]+,\d{2})");
@@ -73,11 +73,19 @@ public static class AmazonMatcher
     public static IReadOnlyList<string> FindOrderNumbers(string text) =>
         OrderRx.Matches(text).Select(m => m.Groups[1].Value).Distinct().ToList();
 
+    /// <summary>Bestellnummern aus Text und Dateiname (Exporte heißen z. B. "20260909_Tax Invoice_303-4130002-8523510.pdf").</summary>
+    public static IReadOnlyList<string> FindOrderNumbers(string text, string fileName) =>
+        FindOrderNumbers(text).Concat(FindOrderNumbers(Path.GetFileNameWithoutExtension(fileName))).Distinct().ToList();
+
     /// <summary>Erkennt Art und Betrag eines Amazon-Belegs aus dem PDF-Text (und dem Dateinamen).</summary>
     public static (ReceiptKind Kind, decimal? Amount) Analyze(string text, string fileName)
     {
         var head = text.Length > 300 ? text[..300] : text;
         var stem = Path.GetFileNameWithoutExtension(fileName);
+        // PdfPig liefert manchmal Text ohne Zeilenwechsel - dann den Anfang großzügiger prüfen.
+        if (!head.Contains("Rechnung", StringComparison.OrdinalIgnoreCase) && !head.Contains("Bestellung", StringComparison.OrdinalIgnoreCase)
+            && !head.Contains("Gutschrift", StringComparison.OrdinalIgnoreCase))
+            head = text.Length > 1500 ? text[..1500] : text;
 
         ReceiptKind kind;
         if (head.Contains("Übersicht zur Bestellung", StringComparison.OrdinalIgnoreCase) || OrderRx.IsMatch(stem) && OrderRx.Match(stem).Value == stem)
@@ -188,6 +196,18 @@ public static class AmazonMatcher
             used.Add(unreadable[0]);
             b.ReceiptFiles.Add(unreadable[0].FilePath);
             b.ReceiptNote = "Betrag der Rechnung nicht lesbar - passt zur Bestellübersicht, bitte prüfen";
+            done.Add(b);
+        }
+
+        // 3b. Betrag nicht als "Zahlbetrag" erkannt, steht aber im Beleg: Bestellnummer + Betrag im Text genügen (Hinweis zur Prüfung).
+        foreach (var b in open.Where(b => !done.Contains(b)))
+        {
+            var cand = Real(b.AmazonOrder).Where(d => !used.Contains(d) && d.Amount is null
+                && d.AllAmounts is not null && d.AllAmounts.Contains(Math.Abs(b.Amount))).ToList();
+            if (cand.Count != 1) continue;
+            used.Add(cand[0]);
+            b.ReceiptFiles.Add(cand[0].FilePath);
+            b.ReceiptNote = "Betrag nur im Belegtext gefunden (nicht als Zahlbetrag erkannt) - bitte prüfen";
             done.Add(b);
         }
 
