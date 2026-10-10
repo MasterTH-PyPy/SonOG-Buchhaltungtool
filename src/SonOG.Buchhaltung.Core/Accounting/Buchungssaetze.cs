@@ -58,6 +58,10 @@ public static class Buchungssaetze
                     p.Add(new(PruefStufe.Fehler, nr, zeile + "Sachkonto ist das Bankkonto selbst"));
                 else if (s.Kontenplan.Count > 0 && !s.Kontenplan.ContainsKey(z.Sachkonto))
                     p.Add(new(PruefStufe.Hinweis, nr, zeile + $"Sachkonto {z.Sachkonto} steht nicht im eingelesenen Kontenplan"));
+                else if (z.BuSchluessel.Trim().Length > 0 && s.IstAutomatikkonto(z.Sachkonto))
+                    p.Add(new(PruefStufe.Hinweis, nr, zeile + $"{z.Sachkonto} ist ein Automatikkonto - BU-Schlüssel {z.BuSchluessel} würde die Steuer doppelt buchen"));
+                else if (z.BuSchluessel.Trim().Length == 0 && s.BuVorschlag(z.Sachkonto, b.Amount < 0) is { Length: > 0 } bu)
+                    p.Add(new(PruefStufe.Hinweis, nr, zeile + $"in Taxpool ist für {z.Sachkonto} der BU-Schlüssel {bu} voreingestellt - ohne BU wird keine Steuer gebucht"));
             }
             if (z.Belegdatum is { } d && d.Year != b.Date.Year && k.RechnungEinbuchen)
                 p.Add(new(PruefStufe.Hinweis, nr, zeile + $"Rechnungsdatum {d:dd.MM.yyyy} liegt im Vorjahr - es wird mit dem Zahlungsdatum gebucht"));

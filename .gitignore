@@ -10,3 +10,9 @@ TestResults/
 *.xlsx
 out/
 Ausgabe/
+# Taxpool-Datenbanken (echte Buchhaltungsdaten) nie ins Repo
+*.dbb
+*.dbd
+*.dbd_backup
+*.db0
+*.db0_info

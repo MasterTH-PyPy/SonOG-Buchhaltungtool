@@ -85,7 +85,29 @@ Drei Arten zu buchen (Doppik mit Personenkonten):
 „Als Regel speichern …“ macht aus der aktuellen Kontierung eine Regel; „Vorschläge neu“ wendet neue Regeln auf alle noch
 nicht bestätigten und nicht von Hand bearbeiteten Buchungen an.
 
-**Aus Taxpool einlesen …** übernimmt CSV-Exporte aus Taxpool, Spalten werden über die Überschrift erkannt:
+**Aus Taxpool lesen …** liest die **Taxpool-Datensicherung (`*.dbb`)** direkt – nur lesend, Taxpool darf dabei offen sein:
+
+- **Buchungsvorlagen** werden zu Vorlagen im Tool (Dropdown „Vorlage“, je Buchung anwendbar). Aus Soll-/Haben-Konto ergibt
+  sich das Gegenkonto zur Bank und die Richtung; Bank ↔ Personenkonto wird OP-Ausgleich, Personenkonto ↔ Sachkonto wird
+  „Beleg einbuchen“. **Splitvorlagen** (z. B. Bewirtung 70/30) verteilen den Betrag nach den Anteilen, der Rundungsrest
+  kommt auf den letzten Teil. Umbuchungsvorlagen ohne Bankkonto, ausgeblendete und abgelaufene Vorlagen werden übergangen.
+- **BU-Schlüssel** kommen aus der Taxpool-Steuertabelle: Steuersatz der Vorlage, sonst der des Kontos; Ausgabe →
+  Vorsteuer-, Einnahme → Umsatzsteuer-Schlüssel. Automatikkonten (z. B. 3400, 8400) bekommen keinen BU.
+- **Kontenplan** (Namen, Automatikkonten, voreingestellte Steuer) und **Personenkonten** werden mit übernommen. Wer ein
+  Sachkonto von Hand einträgt, bekommt den BU-Schlüssel vorgeschlagen; die Prüfung warnt bei BU auf Automatikkonten
+  und bei fehlendem BU, wo Taxpool einen voreingestellt hat.
+- **„Automatisch …“** hinterlegt ein Stichwort für die gewählte Vorlage; dann wird sie passenden Buchungen selbst
+  vorgeschlagen. Das Stichwort bleibt beim erneuten Lesen erhalten (Zuordnung über die GUID der Vorlage, auch nach
+  Umbenennen). In Taxpool gelöschte Vorlagen verschwinden, außer sie haben ein Stichwort.
+- Die Datei wird gemerkt: Ist sie neuer (z. B. nach einer neuen Datensicherung), liest das Tool die Vorlagen beim
+  nächsten Einlesen eines Auszugs automatisch neu.
+
+Aufbau der Datensicherung: zlib-komprimierte Tabellen (`Buchungstexte.dbd` = Vorlagen, `Konten2007.dbd`,
+`Steuersaetze.dbd`, `debikrediinfo.dbd`, …) mit Inhaltsverzeichnis und Kennung `!TP_SFX!` am Ende. Eine einzelne
+`*.dbd`-Datei oder ein Ordner mit `*.dbd` geht auch. Ins Taxpool zurück wird nie geschrieben – Buchungen kommen nur
+über die DATEV-Importdatei.
+
+Weiterhin möglich: CSV-Exporte aus Taxpool (gleicher Button), Spalten werden über die Überschrift erkannt:
 Kontenplan (Konto + Bezeichnung → Kontonamen, Personenkonten → Debitoren/Kreditoren) und Buchungsvorlagen
 (Konto + Gegenkonto + BU + Buchungstext → Vorlage, die man je Buchung anwenden oder mit Stichwort zur Regel machen kann).
 

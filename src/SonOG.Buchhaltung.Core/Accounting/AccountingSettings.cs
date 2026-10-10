@@ -50,6 +50,17 @@ public sealed class KontierungsRegel
     /// <summary>Beleg erst auf dem Personenkonto einbuchen und dann mit der Zahlung ausbuchen (Doppik-Weg).</summary>
     public bool RechnungEinbuchen { get; set; } = true;
 
+    /// <summary>
+    /// Aufteilung (Splitvorlage): je Teil Sachkonto, BU und Anteil. Der Buchungsbetrag wird nach den Anteilen verteilt
+    /// (z. B. 0,7 / 0,3); der Rundungsrest kommt auf den letzten Teil. Leer = eine Zeile mit <see cref="Sachkonto"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<RegelAnteil>? Aufteilung { get; set; }
+
+    /// <summary>Herkunft aus Taxpool (GUID der Buchungsvorlage); beim erneuten Einlesen wird die Regel aktualisiert.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TaxpoolId { get; set; }
+
     [JsonIgnore]
     public bool IstAutomatisch => Stichwort.Trim().Length > 0 || Kategorie.Trim().Length > 0;
 
@@ -64,7 +75,19 @@ public sealed class KontierungsRegel
             .Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase));
     }
 
-    public override string ToString() => Name.Length > 0 ? Name : (Stichwort.Length > 0 ? Stichwort : $"Konto {Sachkonto}");
+    public override string ToString() =>
+        (Name.Length > 0 ? Name : (Stichwort.Length > 0 ? Stichwort : $"Konto {Sachkonto}")) +
+        (IstAutomatisch ? "  [auto: " + (Stichwort.Length > 0 ? Stichwort : Kategorie) + "]" : "");
+}
+
+/// <summary>Ein Teil einer Splitvorlage.</summary>
+public sealed class RegelAnteil
+{
+    public int Sachkonto { get; set; }
+    public string BuSchluessel { get; set; } = "";
+    /// <summary>Anteil am Buchungsbetrag (z. B. 0,7).</summary>
+    public decimal Anteil { get; set; }
+    public string Text { get; set; } = "";
 }
 
 /// <summary>
@@ -134,6 +157,21 @@ public sealed class AccountingSettings
     /// <summary>Kontenbezeichnungen (z. B. aus dem Taxpool-Kontenplan eingelesen), nur für die Anzeige und Prüfung.</summary>
     public Dictionary<int, string> Kontenplan { get; set; } = new();
 
+    /// <summary>Automatikkonten aus Taxpool (Steuer steckt im Konto, kein BU-Schlüssel setzen).</summary>
+    public List<int> Automatikkonten { get; set; } = new();
+
+    /// <summary>
+    /// Voreingestellter Steuerschlüssel je Sachkonto aus Taxpool, Format "VSt|USt" (z. B. "9|3" bei 19 %).
+    /// Wird vorgeschlagen, wenn ein Konto von Hand eingetragen wird, und bei der Prüfung herangezogen.
+    /// </summary>
+    public Dictionary<int, string> KontoSteuerschluessel { get; set; } = new();
+
+    /// <summary>Taxpool-Datensicherung (*.dbb) oder Tabellenordner, aus dem Vorlagen, Konten und Personenkonten gelesen werden.</summary>
+    public string TaxpoolDatei { get; set; } = "";
+
+    /// <summary>Stand der zuletzt gelesenen Taxpool-Datei (Änderungszeit), für das automatische Aktualisieren.</summary>
+    public DateTime? TaxpoolDateiStand { get; set; }
+
     [JsonIgnore]
     public int PersonenkontenLaenge => SachkontenLaenge + 1;
 
@@ -143,6 +181,16 @@ public sealed class AccountingSettings
     public bool IstSachkonto(int konto) => konto > 0 && konto.ToString().Length <= SachkontenLaenge;
 
     public string KontoName(int konto) => Kontenplan.TryGetValue(konto, out var n) ? n : "";
+
+    public bool IstAutomatikkonto(int konto) => Automatikkonten.Contains(konto);
+
+    /// <summary>BU-Schlüssel, den Taxpool für das Konto voreingestellt hat ("" = keiner/Automatikkonto/unbekannt).</summary>
+    public string BuVorschlag(int konto, bool ausgabe)
+    {
+        if (IstAutomatikkonto(konto) || !KontoSteuerschluessel.TryGetValue(konto, out var v)) return "";
+        var p = v.Split('|');
+        return (ausgabe ? p.ElementAtOrDefault(0) : p.ElementAtOrDefault(1)) ?? "";
+    }
 
     /// <summary>Beginn des Wirtschaftsjahres, in das das Datum fällt.</summary>
     public DateOnly WirtschaftsjahrBeginn(DateOnly d)

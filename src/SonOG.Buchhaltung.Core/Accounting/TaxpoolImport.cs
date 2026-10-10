@@ -9,12 +9,16 @@ public sealed class TaxpoolImportErgebnis
     public int Sachkonten { get; set; }
     public int Personenkonten { get; set; }
     public int Vorlagen { get; set; }
+    public int Aktualisiert { get; set; }
+    public int Entfernt { get; set; }
     public int Uebersprungen { get; set; }
     public List<string> Hinweise { get; } = new();
 
     public override string ToString() =>
-        $"{Sachkonten} Sachkonten, {Personenkonten} Personenkonten, {Vorlagen} Vorlagen übernommen" +
-        (Uebersprungen > 0 ? $", {Uebersprungen} Zeilen übersprungen" : "");
+        $"{Sachkonten} Sachkonten, {Personenkonten} Personenkonten, {Vorlagen} Vorlagen neu" +
+        (Aktualisiert > 0 ? $", {Aktualisiert} aktualisiert" : "") +
+        (Entfernt > 0 ? $", {Entfernt} entfernt" : "") +
+        (Uebersprungen > 0 ? $", {Uebersprungen} übersprungen" : "");
 }
 
 /// <summary>

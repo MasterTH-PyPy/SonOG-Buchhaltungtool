@@ -28,7 +28,7 @@ internal sealed class KontierungPanel : UserControl
     private readonly CheckBox _chkOffen = new() { Text = "Nur offene / fehlerhafte", AutoSize = true, Margin = new Padding(12, 8, 3, 3) };
     private readonly Button _btnNeu = new() { Text = "Vorschläge neu", AutoSize = true };
     private readonly Button _btnPersonen = new() { Text = "Personenkonten ...", AutoSize = true };
-    private readonly Button _btnImport = new() { Text = "Aus Taxpool einlesen ...", AutoSize = true };
+    private readonly Button _btnImport = new() { Text = "Aus Taxpool lesen ...", AutoSize = true };
     private readonly Button _btnEinstellungen = new() { Text = "Einstellungen / Regeln öffnen", AutoSize = true };
     private readonly Button _btnExport = new() { Text = "3 · Taxpool-Importdatei erzeugen ...", AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
     private readonly Label _lblInfo = new() { AutoSize = true, Margin = new Padding(12, 8, 3, 3), ForeColor = Color.DimGray };
@@ -40,6 +40,7 @@ internal sealed class KontierungPanel : UserControl
     private readonly CheckBox _chkEinbuchen = new() { Text = "Beleg auf dem Personenkonto einbuchen, dann Zahlung ausbuchen", AutoSize = true, Margin = new Padding(12, 6, 3, 3) };
     private readonly ComboBox _cmbVorlage = new() { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Button _btnVorlage = new() { Text = "Anwenden", AutoSize = true };
+    private readonly Button _btnStichwort = new() { Text = "Automatisch ...", AutoSize = true };
     private readonly DataGridView _lines = new();
     private readonly Button _btnAdd = new() { Text = "+ Zeile (Rest)", AutoSize = true };
     private readonly Button _btnDel = new() { Text = "Zeile entfernen", AutoSize = true };
@@ -113,6 +114,8 @@ internal sealed class KontierungPanel : UserControl
         personRow.Controls.Add(new Label { Text = "Vorlage:", AutoSize = true, Margin = new Padding(18, 7, 3, 3) });
         personRow.Controls.Add(_cmbVorlage);
         personRow.Controls.Add(_btnVorlage);
+        personRow.Controls.Add(_btnStichwort);
+        new ToolTip().SetToolTip(_btnStichwort, "Stichwort für die gewählte Vorlage hinterlegen: Buchungen mit diesem Text bekommen sie künftig automatisch vorgeschlagen.");
         editor.Controls.Add(personRow, 0, 1);
 
         _lines.Dock = DockStyle.Fill;
@@ -183,6 +186,7 @@ internal sealed class KontierungPanel : UserControl
             Changed();
         };
         _btnVorlage.Click += (_, _) => OnVorlage();
+        _btnStichwort.Click += (_, _) => OnStichwort();
 
         _lines.CellEndEdit += OnLineEdited;
         _lines.DataError += (_, e) => e.ThrowException = false;
@@ -211,8 +215,11 @@ internal sealed class KontierungPanel : UserControl
             try
             {
                 Tp.Reload();
+                // Taxpool-Vorlagen neu lesen, wenn sich die gemerkte Taxpool-Datei geändert hat
+                var tp = Tp.TaxpoolAktualisieren();
                 var restored = Tp.Vorbereiten(session.Statement, session.StatementKey);
-                _status(restored > 0 ? $"Kontierung: {restored} gespeicherte Kontierung(en) übernommen." : "Kontierung vorgeschlagen.");
+                _status((restored > 0 ? $"Kontierung: {restored} gespeicherte Kontierung(en) übernommen." : "Kontierung vorgeschlagen.") +
+                        (tp is null ? "" : "  " + tp));
             }
             catch (Exception ex)
             {
@@ -233,11 +240,17 @@ internal sealed class KontierungPanel : UserControl
         foreach (var k in Tp.Personen.Konten.OrderBy(k => k.Konto)) _cmbPerson.Items.Add(k.ToString());
         _cmbPerson.EndUpdate();
 
+        var keep = _cmbVorlage.SelectedItem as KontierungsRegel;
         _cmbVorlage.BeginUpdate();
         _cmbVorlage.Items.Clear();
-        foreach (var r in Tp.Settings.Regeln) _cmbVorlage.Items.Add(r);
+        // eigene Regeln zuerst, danach die Taxpool-Vorlagen alphabetisch
+        foreach (var r in Tp.Settings.Regeln.Where(r => r.TaxpoolId is null)) _cmbVorlage.Items.Add(r);
+        foreach (var r in Tp.Settings.Regeln.Where(r => r.TaxpoolId is not null).OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)) _cmbVorlage.Items.Add(r);
         _cmbVorlage.EndUpdate();
-        if (_cmbVorlage.Items.Count > 0) _cmbVorlage.SelectedIndex = 0;
+        _cmbVorlage.DropDownWidth = 420;
+        var again = keep is null ? null : _cmbVorlage.Items.Cast<KontierungsRegel>().FirstOrDefault(r => r.Name == keep.Name);
+        if (again is not null) _cmbVorlage.SelectedItem = again;
+        else if (_cmbVorlage.Items.Count > 0) _cmbVorlage.SelectedIndex = 0;
     }
 
     private void RefreshList()
@@ -404,7 +417,7 @@ internal sealed class KontierungPanel : UserControl
     private void UpdateButtons()
     {
         bool has = Current?.Kontierung is not null;
-        foreach (var c in new Control[] { _cmbPerson, _btnPersonNeu, _cmbVorlage, _btnVorlage, _lines, _btnAdd, _btnDel, _btnReset, _btnRegel, _btnOk })
+        foreach (var c in new Control[] { _cmbPerson, _btnPersonNeu, _cmbVorlage, _btnVorlage, _btnStichwort, _lines, _btnAdd, _btnDel, _btnReset, _btnRegel, _btnOk })
             c.Enabled = has;
         _chkEinbuchen.Enabled = has && Current!.Kontierung!.Personenkonto is not null;
         _btnNeu.Enabled = _session is not null;
@@ -503,7 +516,18 @@ internal sealed class KontierungPanel : UserControl
                 break;
             case "Sachkonto":
                 if (text.Length == 0) z.Sachkonto = 0;
-                else if (int.TryParse(text, out var konto) && konto > 0) z.Sachkonto = konto;
+                else if (int.TryParse(text, out var konto) && konto > 0)
+                {
+                    bool geaendert = z.Sachkonto != konto;
+                    z.Sachkonto = konto;
+                    // BU-Schlüssel aus Taxpool vorschlagen (Automatikkonto → keiner)
+                    if (geaendert && k.BrauchtSachkonto)
+                    {
+                        if (Tp.Settings.IstAutomatikkonto(konto)) z.BuSchluessel = "";
+                        else if (z.BuSchluessel.Length == 0) z.BuSchluessel = Tp.Settings.BuVorschlag(konto, b.Amount < 0);
+                        _lines.Rows[e.RowIndex].Cells["Bu"].Value = z.BuSchluessel;
+                    }
+                }
                 else error = "Sachkonto muss eine Zahl sein";
                 cell.Value = z.Sachkonto > 0 ? z.Sachkonto.ToString(CultureInfo.InvariantCulture) : "";
                 _lines.Rows[e.RowIndex].Cells["Kontoname"].Value = Tp.Settings.KontoName(z.Sachkonto);
@@ -654,14 +678,43 @@ internal sealed class KontierungPanel : UserControl
         RefreshList();
     }
 
+    private void OnStichwort()
+    {
+        if (_cmbVorlage.SelectedItem is not KontierungsRegel regel) return;
+        var def = regel.Stichwort.Length > 0 ? regel.Stichwort
+            : Current is { } b ? (b.Category.IsAmazon() ? "AMAZON" : b.PayerName.Length > 0 ? b.PayerName : "") : "";
+        var term = Prompt.Ask(this, "Vorlage automatisch vorschlagen",
+            $"Stichwort im Buchungstext für \"{regel.Name}\" (Alternativen mit | trennen, z. B. TELEKOM|T-MOBILE). " +
+            "Leer lassen = nur von Hand anwenden.", def);
+        if (term is null) return;
+        regel.Stichwort = term;
+        if (term.Length > 0 && regel.Richtung == Richtung.Alle && Current is { } cur)
+            regel.Richtung = cur.Amount < 0 ? Richtung.Ausgang : Richtung.Eingang;
+        Tp.SaveSettings();
+        FillCombos();
+        if (_session is not null)
+        {
+            var n = Tp.NeuVorschlagen(_session.Statement);
+            Save();
+            RefreshList();
+            _status(term.Length > 0 ? $"\"{regel.Name}\" greift jetzt bei \"{term}\" ({n} offene Buchung(en) neu vorgeschlagen)." : $"\"{regel.Name}\" ist wieder eine reine Vorlage.");
+        }
+    }
+
     private void OnImport()
     {
+        var bisher = Tp.Settings.TaxpoolDatei;
         using var dlg = new OpenFileDialog
         {
-            Title = "Export aus Taxpool wählen (Kontenplan, Personenkonten oder Buchungsvorlagen)",
-            Filter = "CSV/Text (*.csv;*.txt)|*.csv;*.txt|Alle Dateien (*.*)|*.*",
+            Title = "Taxpool-Datensicherung (*.dbb) wählen - oder einen CSV-Export (Kontenplan, Personenkonten, Vorlagen)",
+            Filter = "Taxpool-Datensicherung (*.dbb)|*.dbb|Taxpool-Tabelle (*.dbd)|*.dbd|CSV-Export (*.csv;*.txt)|*.csv;*.txt|Alle Dateien (*.*)|*.*",
             Multiselect = true,
         };
+        if (bisher.Length > 0 && File.Exists(bisher))
+        {
+            dlg.InitialDirectory = Path.GetDirectoryName(bisher);
+            dlg.FileName = Path.GetFileName(bisher);
+        }
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         try
         {
@@ -675,13 +728,17 @@ internal sealed class KontierungPanel : UserControl
             RefreshList();
             var msg = string.Join(Environment.NewLine + Environment.NewLine, results.Select(r => string.Join(Environment.NewLine, r.Hinweise)));
             MessageBox.Show(this, msg + Environment.NewLine + Environment.NewLine +
-                                  "Vorlagen ohne Stichwort erscheinen unter \"Vorlage\" und lassen sich je Buchung anwenden. " +
-                                  "Mit \"Als Regel speichern\" (oder einem Stichwort in buchhaltung.json) werden sie automatisch vorgeschlagen.",
-                "Aus Taxpool einlesen", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                  "Die Vorlagen stehen unter \"Vorlage\" und lassen sich je Buchung anwenden. Mit \"Automatisch ...\" " +
+                                  "hinterlegst du ein Stichwort, dann wird die Vorlage passenden Buchungen selbst vorgeschlagen." +
+                                  (Tp.Settings.TaxpoolDatei.Length > 0
+                                      ? Environment.NewLine + Environment.NewLine + "Die Taxpool-Datei ist gemerkt: Ändert sie sich (neue Datensicherung), " +
+                                        "liest das Tool die Vorlagen beim nächsten Einlesen eines Auszugs automatisch neu."
+                                      : ""),
+                "Aus Taxpool lesen", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Aus Taxpool einlesen", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, "Aus Taxpool lesen", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

@@ -105,29 +105,52 @@ public sealed class KontierungsVorschlag
             hinweis += " - Personenkonto nicht gefunden, bitte wählen oder anlegen";
             quelle = KontierungsQuelle.Offen;
         }
-        if (sachkonto == 0 && (personKonto is null || regel.RechnungEinbuchen))
+        if (sachkonto == 0 && regel.Aufteilung is not { Count: > 0 } && (personKonto is null || regel.RechnungEinbuchen))
         {
             hinweis += " - Sachkonto fehlt";
             quelle = KontierungsQuelle.Offen;
         }
 
-        return new Kontierung
+        var text = regel.Buchungstext.Trim().Length > 0 ? Cut(regel.Buchungstext.Trim()) : Kurztext(b);
+        var k = new Kontierung
         {
             Personenkonto = personKonto,
             RechnungEinbuchen = personKonto is not null && regel.RechnungEinbuchen,
             Quelle = quelle,
             Hinweis = hinweis,
-            Zeilen =
-            {
-                new KontierungsZeile
-                {
-                    Betrag = Math.Abs(b.Amount),
-                    Sachkonto = sachkonto,
-                    BuSchluessel = bu,
-                    Text = regel.Buchungstext.Trim().Length > 0 ? Cut(regel.Buchungstext.Trim()) : Kurztext(b),
-                },
-            },
         };
+
+        if (regel.Aufteilung is { Count: > 0 } teile)
+        {
+            // Splitvorlage: Betrag nach Anteilen verteilen, Rundungsrest auf den letzten Teil
+            var gesamt = Math.Abs(b.Amount);
+            var summeAnteile = teile.Sum(t => Math.Abs(t.Anteil));
+            decimal verteilt = 0;
+            for (int i = 0; i < teile.Count; i++)
+            {
+                var t = teile[i];
+                var betrag = i == teile.Count - 1
+                    ? gesamt - verteilt
+                    : Math.Round(gesamt * (summeAnteile == 0 ? 1m / teile.Count : Math.Abs(t.Anteil) / summeAnteile), 2, MidpointRounding.AwayFromZero);
+                verteilt += betrag;
+                k.Zeilen.Add(new KontierungsZeile
+                {
+                    Betrag = betrag,
+                    Sachkonto = t.Sachkonto,
+                    BuSchluessel = t.BuSchluessel,
+                    Text = t.Text.Trim().Length > 0 ? Cut(t.Text) : text,
+                });
+            }
+            if (k.Zeilen.Any(z => z.Sachkonto == 0) && k.Quelle != KontierungsQuelle.Offen)
+            {
+                k.Quelle = KontierungsQuelle.Offen;
+                k.Hinweis += " - Sachkonto fehlt";
+            }
+            return k;
+        }
+
+        k.Zeilen.Add(new KontierungsZeile { Betrag = Math.Abs(b.Amount), Sachkonto = sachkonto, BuSchluessel = bu, Text = text });
+        return k;
     }
 
     /// <summary>Kurzer Buchungstext aus dem Kontoauszug (max. 60 Zeichen).</summary>

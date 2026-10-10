@@ -198,11 +198,66 @@ public sealed class TaxpoolService
 
     public List<TaxpoolImportErgebnis> ImportTaxpool(IEnumerable<string> files)
     {
-        var list = files.Select(f => TaxpoolImport.Datei(f, Settings, Personen)).ToList();
+        var list = new List<TaxpoolImportErgebnis>();
+        foreach (var f in files)
+        {
+            var ext = Path.GetExtension(f).ToLowerInvariant();
+            if (ext is ".csv" or ".txt") list.Add(TaxpoolImport.Datei(f, Settings, Personen));
+            else list.Add(ImportTaxpoolDatenbankIntern(f));
+        }
         SaveSettings();
         SavePersonen();
         return list;
     }
+
+    /// <summary>
+    /// Liest Vorlagen, Kontenplan, Steuerschlüssel und Personenkonten direkt aus der Taxpool-Datensicherung (*.dbb),
+    /// einer Tabellendatei (*.dbd) oder einem Ordner mit Tabellen. Nur lesend; der Pfad wird für das automatische
+    /// Aktualisieren gemerkt.
+    /// </summary>
+    public TaxpoolImportErgebnis ImportTaxpoolDatenbank(string path)
+    {
+        var e = ImportTaxpoolDatenbankIntern(path);
+        SaveSettings();
+        SavePersonen();
+        return e;
+    }
+
+    private TaxpoolImportErgebnis ImportTaxpoolDatenbankIntern(string path)
+    {
+        var daten = TaxpoolDatenbank.Lesen(path);
+        var e = TaxpoolVorlagenImport.Uebernehmen(daten, Settings, Personen);
+        Settings.TaxpoolDatei = path;
+        Settings.TaxpoolDateiStand = Stand(path);
+        e.Hinweise.Insert(0, Path.GetFileName(path) + ": " + e);
+        return e;
+    }
+
+    /// <summary>
+    /// Liest die gemerkte Taxpool-Datei neu, wenn sie sich seit dem letzten Lesen geändert hat.
+    /// Liefert null, wenn nichts zu tun war; Fehler werden als Text zurückgegeben statt geworfen.
+    /// </summary>
+    public string? TaxpoolAktualisieren()
+    {
+        var path = Settings.TaxpoolDatei;
+        if (string.IsNullOrWhiteSpace(path) || !(File.Exists(path) || Directory.Exists(path))) return null;
+        var stand = Stand(path);
+        if (Settings.TaxpoolDateiStand is { } alt && stand <= alt) return null;
+        try
+        {
+            var e = ImportTaxpoolDatenbank(path);
+            return "Taxpool-Vorlagen aktualisiert: " + e;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return "Taxpool-Datei konnte nicht gelesen werden: " + ex.Message;
+        }
+    }
+
+    private static DateTime Stand(string path) =>
+        Directory.Exists(path)
+            ? Directory.EnumerateFiles(path, "*.dbd").Select(File.GetLastWriteTimeUtc).DefaultIfEmpty(DateTime.MinValue).Max()
+            : File.GetLastWriteTimeUtc(path);
 
     // ---------------------------------------------------------------------------------------------
 
