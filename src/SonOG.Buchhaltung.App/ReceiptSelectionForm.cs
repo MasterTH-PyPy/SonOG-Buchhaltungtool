@@ -67,14 +67,17 @@ public sealed class ReceiptSelectionForm : Form
     public bool HasItems => _items.Count > 0;
 
     /// <summary>Entfernt abgewählte Belege aus den Buchungen.</summary>
-    public void ApplyDeselection()
+    public List<Booking> ApplyDeselection()
     {
+        var changed = new List<Booking>();
         for (int i = 0; i < _items.Count; i++)
         {
             if (_grid.Rows[i].Cells["Druck"].Value is true) continue;
             var b = _items[i].Booking;
             b.ReceiptFiles.Remove(_items[i].File);
             b.ReceiptNote = "Beleg abgewählt: " + Path.GetFileName(_items[i].File);
+            if (!changed.Contains(b)) changed.Add(b);
         }
+        return changed;
     }
 }

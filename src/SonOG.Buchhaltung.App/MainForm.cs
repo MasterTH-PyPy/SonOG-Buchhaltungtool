@@ -31,6 +31,8 @@ public sealed class MainForm : Form
     private readonly Button _btnPrint = new() { Text = "Drucken (rückwärts) – Vorschau ...", AutoSize = true };
     private readonly CheckBox _chkMail = new() { Text = "Mails abrufen", AutoSize = true };
     private readonly Button _btnMail = new() { Text = "Mail-Postfächer ...", AutoSize = true };
+    private readonly Button _btnReload = new() { Text = "Dokumente neu einlesen", AutoSize = true };
+    private readonly PdfPreviewPanel _preview = new() { Dock = DockStyle.Fill };
     private readonly Button _btnRules = new() { Text = "Regeln öffnen", AutoSize = true };
     private readonly Button _btnRelease = new() { Text = "Nummern freigeben", AutoSize = true };
 
@@ -94,7 +96,7 @@ public sealed class MainForm : Form
         inputs.Controls.Add(range, 1, inputs.RowCount - 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
-        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnMail, _chkMail, _btnRules, _btnRelease, _chkOnlyReview });
+        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnReload, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnMail, _chkMail, _btnRules, _btnRelease, _chkOnlyReview });
         _chkPrint.Margin = new Padding(3, 8, 12, 3);
         _chkOnlyReview.Margin = new Padding(12, 8, 3, 3);
 
@@ -113,8 +115,16 @@ public sealed class MainForm : Form
         var split = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
         split.Panel1.Controls.Add(_grid);
         split.Panel2.Controls.Add(_txtDetails);
+        // links Tabelle und Details, rechts die PDF-Vorschau der markierten Buchung
+        var outer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical };
+        outer.Panel1.Controls.Add(split);
+        outer.Panel2.Controls.Add(_preview);
         // SplitterDistance erst setzen, wenn das Fenster seine Größe hat (sonst ArgumentException)
-        Shown += (_, _) => split.SplitterDistance = Math.Max(120, split.Height * 7 / 10);
+        Shown += (_, _) =>
+        {
+            split.SplitterDistance = Math.Max(120, split.Height * 7 / 10);
+            outer.SplitterDistance = Math.Max(300, outer.Width * 6 / 10);
+        };
 
         var status = new StatusStrip();
         status.Items.Add(_lblStatus);
@@ -123,7 +133,7 @@ public sealed class MainForm : Form
 
         // Schritt 1: Reihenfolge beim Hinzufügen: zuerst Fill, dann Top-Elemente von unten nach oben
         var page1 = new TabPage("1 · Zuordnen und Drucken");
-        page1.Controls.Add(split);
+        page1.Controls.Add(outer);
         page1.Controls.Add(_warnPanel);
         page1.Controls.Add(buttons);
         page1.Controls.Add(inputs);
@@ -168,6 +178,8 @@ public sealed class MainForm : Form
             _settings.MailDaysAfter = dlg.DaysAfter;
             try { _settings.Save(); } catch (IOException) { }
         };
+        _btnReload.Click += async (_, _) => await OnReloadDocumentsAsync();
+        _preview.RemoveRequested += OnPreviewRemove;
         _btnRules.Click += (_, _) => OnOpenRules();
         _btnRelease.Click += (_, _) => OnRelease();
         _chkOnlyReview.CheckedChanged += (_, _) => Rebind();
@@ -321,10 +333,67 @@ public sealed class MainForm : Form
         }
     }
 
+    private async Task OnReloadDocumentsAsync()
+    {
+        if (_session is null) return;
+        SaveSettings();
+        var options = BuildOptions();
+        var progress = new Progress<string>(m => _lblStatus.Text = m);
+        var session = _session;
+        SetBusy(true);
+        try
+        {
+            // Kontoauszug und Nummern bleiben unverändert; manuelle Zuordnungen werden nach dem Abgleich wieder angewendet.
+            await Task.Run(() => _service.Rematch(session, options, progress));
+            Rebind();
+            ShowWarnings();
+            _kontierung.SetSession(_session);
+            _lblStatus.Text = "Dokumente neu eingelesen. " + Summary();
+        }
+        catch (Exception ex)
+        {
+            _lblStatus.Text = "Fehler beim erneuten Einlesen.";
+            MessageBox.Show(this, ex.Message, "Fehler beim erneuten Einlesen", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void OnPreviewRemove(PreviewItem item)
+    {
+        if (_session is null || SelectedBooking() is not { } b) return;
+        if (MessageBox.Show(this, $"Beleg \"{Path.GetFileName(item.Path)}\" von Buchung {b.Number} lösen?\nDie Datei selbst bleibt unverändert.",
+                "Zuordnung entfernen", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        _service.RemoveReceipt(_session, b, item.Path);
+        RefreshKeepSelection();
+    }
+
+    /// <summary>Dateien, die zur markierten Buchung angezeigt werden: Kontoauszugsseite, Belege, Rechnungsvorschläge.</summary>
+    private void UpdatePreview()
+    {
+        if (_session is null || SelectedBooking() is not { } b)
+        {
+            _preview.SetItems(Array.Empty<PreviewItem>());
+            return;
+        }
+        var items = new List<PreviewItem>();
+        if (File.Exists(_session.StatementPath))
+            items.Add(new PreviewItem($"Kontoauszug, Seite {b.PageIndex + 1}", _session.StatementPath, b.PageIndex, false));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in b.ReceiptFiles)
+            if (File.Exists(f) && seen.Add(f)) items.Add(new PreviewItem("Beleg: " + Path.GetFileName(f), f, 0, true));
+        if (b.Match is { Invoices.Count: > 0 } m)
+            foreach (var i in m.Invoices)
+                if (File.Exists(i.FilePath) && seen.Add(i.FilePath)) items.Add(new PreviewItem("Rechnungsvorschlag: " + Path.GetFileName(i.FilePath), i.FilePath, 0, false));
+        _preview.SetItems(items);
+    }
+
     private void OnAccept()
     {
         if (SelectedBooking() is not { Match: { Accepted: false } } b) return;
-        _service.AcceptSuggestion(b);
+        _service.AcceptSuggestion(_session!, b);
         RefreshKeepSelection();
     }
 
@@ -333,7 +402,7 @@ public sealed class MainForm : Form
         if (SelectedBooking() is not { } b) return;
         using var dlg = new OpenFileDialog { Filter = "PDF-Dateien (*.pdf)|*.pdf", Title = "Beleg für Buchung " + b.Number };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
-        _service.AttachReceipt(b, dlg.FileName);
+        _service.AttachReceipt(_session!, b, dlg.FileName);
         RefreshKeepSelection();
     }
 
@@ -354,7 +423,8 @@ public sealed class MainForm : Form
             if (sel.HasItems)
             {
                 if (sel.ShowDialog(this) != DialogResult.OK) return;
-                sel.ApplyDeselection();
+                var changed = sel.ApplyDeselection();
+                if (changed.Count > 0) _service.SaveManual(_session, changed.ToArray());
                 Rebind();
             }
         }
@@ -524,6 +594,7 @@ public sealed class MainForm : Form
 
     private void ShowDetails()
     {
+        UpdatePreview();
         if (SelectedBooking() is not { } b)
         {
             _txtDetails.Text = "";
@@ -555,6 +626,7 @@ public sealed class MainForm : Form
         var b = SelectedBooking();
         _btnExport.Enabled = has;
         _btnPrint.Enabled = has;
+        _btnReload.Enabled = has;
         _btnRelease.Enabled = has;
         _btnAttach.Enabled = b is not null;
         _btnAccept.Enabled = b?.Match is { Accepted: false, Status: not MatchStatus.Ok };
@@ -566,6 +638,7 @@ public sealed class MainForm : Form
         _btnLoad.Enabled = !busy;
         _btnExport.Enabled = !busy && _session is not null;
         _btnPrint.Enabled = !busy && _session is not null;
+        _btnReload.Enabled = !busy && _session is not null;
         _btnAccept.Enabled = !busy && _btnAccept.Enabled;
         _btnAttach.Enabled = !busy && _btnAttach.Enabled;
         _btnRelease.Enabled = !busy && _session is not null;

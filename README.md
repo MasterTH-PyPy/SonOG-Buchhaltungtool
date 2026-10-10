@@ -47,6 +47,15 @@ dotnet run --project src/SonOG.Buchhaltung.App
 Die **erste Belegnummer** ist im Hauptfenster einstellbar (damit es keine Überschneidungen mit anderen Nummern gibt): liegt der Zähler
 darunter, wird er hochgesetzt, liegt er darüber, läuft er einfach weiter.
 
+**Manuelle Zuordnungen bleiben erhalten:** Wer einen Beleg von Hand zuordnet, einen Vorschlag übernimmt oder einen Beleg entfernt/abwählt,
+dessen Eingriff wird je Auszug unter `%AppData%\SonOG-Buchhaltung\zuordnungen` gespeichert und nach jedem Einlesen wieder angewendet
+(erkannt über Datum, Betrag und Text der Buchung, nicht über die Belegnummer). Der Button **Dokumente neu einlesen** liest Rechnungs-,
+Eingangs- und Mail-Ordner neu und gleicht neu ab, ohne den Kontoauszug und die Nummern anzufassen. **Einlesen / Vorschau** lädt den
+Auszug komplett neu, wendet die gespeicherten Eingriffe aber ebenfalls wieder an.
+
+Rechts neben der Tabelle zeigt die **PDF-Vorschau** die Kontoauszugsseite der markierten Buchung sowie ihre Belege und Rechnungsvorschläge
+(Seitenwechsel, Zoom, „Extern öffnen“, „Zuordnung entfernen“). Die Anzeige nutzt die in Windows eingebaute PDF-Funktion.
+
 Die Nummern merkt sich `nummern.json` unter `%AppData%\SonOG-Buchhaltung`. Derselbe Auszug bekommt bei erneutem Export
 dieselben Nummern. Ändert sich die Buchungsanzahl, wird der Export verweigert, bis die Nummern mit **Nummern freigeben**
 zurückgenommen wurden. Dort steht auch, welche Rechnungen schon bezahlt sind (Doppelzahlungen werden erkannt).

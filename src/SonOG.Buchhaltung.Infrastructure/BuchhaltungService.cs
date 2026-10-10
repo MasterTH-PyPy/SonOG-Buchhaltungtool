@@ -30,8 +30,13 @@ public sealed class ServiceOptions
 public sealed class BuchhaltungSession
 {
     public ParsedStatement Statement { get; init; } = null!;
-    public InvoiceIndex Invoices { get; init; } = null!;
-    public ReconcileResult Reconcile { get; init; } = null!;
+    public InvoiceIndex Invoices { get; set; } = null!;
+    public ReconcileResult Reconcile { get; set; } = null!;
+    public string StatementPath { get; init; } = "";
+    /// <summary>Stabile Schlüssel der Buchungen für gespeicherte manuelle Zuordnungen.</summary>
+    public Dictionary<Booking, string> ManualKeys { get; init; } = new();
+    /// <summary>Warnungen, die nur vom Kontoauszug abhängen (Saldo, Nummernkreis); die übrigen entstehen beim Dokumentenabgleich.</summary>
+    public List<string> BaseWarnings { get; } = new();
     public AppRules Rules { get; init; } = null!;
     public string StatementKey { get; init; } = "";
     public int Year => Statement.Year;
@@ -109,6 +114,45 @@ public sealed class BuchhaltungService
         if (statement.BalanceOk is null)
             warnings.Add("Anfangs-/Schlusssaldo nicht gefunden - Saldo-Prüfung nicht möglich.");
 
+        var session = new BuchhaltungSession
+        {
+            Statement = statement,
+            Rules = rules,
+            StatementKey = key,
+            StatementPath = o.StatementPath,
+            FirstNumber = first,
+            NumberFrom = numFrom,
+            NumberTo = numTo,
+            ManualKeys = ManualAssignments.Keys(statement.Bookings),
+        };
+        session.BaseWarnings.AddRange(warnings);
+        Rematch(session, o, progress, ct);
+        return session;
+    }
+
+    private string ManualPath(BuchhaltungSession s) => Path.Combine(_dataDir, "zuordnungen", s.StatementKey + ".json");
+
+    /// <summary>
+    /// Liest Rechnungsordner, Eingangsordner und Mails neu ein und gleicht neu ab - ohne den Kontoauszug neu zu lesen und ohne die
+    /// Nummern anzutasten. Manuelle Zuordnungen (gespeichert je Auszug) werden danach wieder angewendet.
+    /// </summary>
+    public void Rematch(BuchhaltungSession session, ServiceOptions o, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var statement = session.Statement;
+        var rules = session.Rules;
+        var key = session.StatementKey;
+        var state = NumberingState.Load(StatePath);
+        var warnings = session.Warnings;
+        warnings.Clear();
+        warnings.AddRange(session.BaseWarnings);
+
+        foreach (var b in statement.Bookings)
+        {
+            b.Match = null;
+            b.ReceiptFiles = new List<string>();
+            b.ReceiptNote = "";
+        }
+
         var scanner = new DocumentScanner(Path.Combine(_dataDir, "cache"));
 
         var index = new InvoiceIndex();
@@ -185,19 +229,23 @@ public sealed class BuchhaltungService
             warnings.Add("Mail-Protokoll: " + logPath);
         }
 
-        var session = new BuchhaltungSession
-        {
-            Statement = statement,
-            Invoices = index,
-            Reconcile = reconcile,
-            Rules = rules,
-            StatementKey = key,
-            FirstNumber = first,
-            NumberFrom = numFrom,
-            NumberTo = numTo,
-        };
-        session.Warnings.AddRange(warnings);
-        return session;
+
+        session.Invoices = index;
+        session.Reconcile = reconcile;
+
+        var manual = ManualAssignments.Load(ManualPath(session));
+        int applied = manual.Apply(session.ManualKeys);
+        if (applied > 0) warnings.Add($"{applied} manuelle Zuordnung(en) wieder angewendet.");
+    }
+
+    /// <summary>Speichert den Belegstand der Buchung(en) als manuellen Eingriff, damit er beim erneuten Einlesen bleibt.</summary>
+    public void SaveManual(BuchhaltungSession session, params Booking[] bookings)
+    {
+        var path = ManualPath(session);
+        var manual = ManualAssignments.Load(path);
+        foreach (var b in bookings)
+            if (session.ManualKeys.TryGetValue(b, out var k)) manual.Record(k, b);
+        manual.Save(path);
     }
 
     private static void AssignNumbers(ParsedStatement statement, AppRules rules, int first)
@@ -210,12 +258,25 @@ public sealed class BuchhaltungService
     // Manuelle Eingriffe
     // ---------------------------------------------------------------------------------------------
 
-    public void AcceptSuggestion(Booking booking) => booking.Match?.Accept(booking);
+    public void AcceptSuggestion(BuchhaltungSession session, Booking booking)
+    {
+        booking.Match?.Accept(booking);
+        SaveManual(session, booking);
+    }
 
-    public void AttachReceipt(Booking booking, string pdfPath)
+    public void AttachReceipt(BuchhaltungSession session, Booking booking, string pdfPath)
     {
         if (!booking.ReceiptFiles.Contains(pdfPath)) booking.ReceiptFiles.Add(pdfPath);
-        booking.ReceiptNote = "";
+        booking.ReceiptNote = "Manuell zugeordnet";
+        SaveManual(session, booking);
+    }
+
+    /// <summary>Entfernt einen (z. B. falsch zugeordneten) Beleg von der Buchung und merkt sich das.</summary>
+    public void RemoveReceipt(BuchhaltungSession session, Booking booking, string pdfPath)
+    {
+        booking.ReceiptFiles.RemoveAll(f => string.Equals(f, pdfPath, StringComparison.OrdinalIgnoreCase));
+        booking.ReceiptNote = "Beleg manuell entfernt: " + Path.GetFileName(pdfPath);
+        SaveManual(session, booking);
     }
 
     /// <summary>True, wenn die Nummern des Auszugs in Schritt 1 endgültig vergeben wurden (Export erfolgt).</summary>
