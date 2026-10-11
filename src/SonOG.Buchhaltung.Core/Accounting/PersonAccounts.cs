@@ -26,6 +26,14 @@ public sealed class PersonAccount
     public int StandardSachkonto { get; set; }
     public string StandardBuSchluessel { get; set; } = "";
 
+    /// <summary>Standard-Sachkonto stammt aus den Taxpool-Buchungen (häufigstes Gegenkonto) und wird beim erneuten Lesen aktualisiert.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool StandardAusTaxpool { get; set; }
+
+    /// <summary>Anzahl Buchungen auf dem Konto in den letzten beiden Jahren laut Taxpool (entscheidet bei gleichnamigen Konten).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Nutzung { get; set; }
+
     public override string ToString() => $"{Konto} {Name}";
 }
 
@@ -53,6 +61,13 @@ public sealed class PersonAccountDirectory
     /// Personenkonto, dessen Suchbegriff im Buchungstext steht (längster Treffer gewinnt).
     /// Ohne Suchbegriff-Treffer: Kontoname als Wortbestandteil im Text.
     /// </summary>
+    /// <summary>
+    /// Personenkonto zum Buchungstext mit Begründung. Das Vorzeichen des Betrags bestimmt, welcher Kreis bevorzugt wird
+    /// (Abbuchung → Lieferanten, Eingang → Kunden). Siehe <see cref="PersonenkontoErkennung"/>.
+    /// </summary>
+    public PersonTreffer? Erkennen(string text, decimal betrag) => new PersonenkontoErkennung(Konten).Finden(text, betrag);
+
+    /// <summary>Einfache Suche ohne Richtung (nur Suchbegriffe und vollständiger Name), für ältere Aufrufer.</summary>
     public PersonAccount? FindByText(string text, PersonenArt? art = null)
     {
         var candidates = Konten.Where(k => art is null || k.Art == art).ToList();

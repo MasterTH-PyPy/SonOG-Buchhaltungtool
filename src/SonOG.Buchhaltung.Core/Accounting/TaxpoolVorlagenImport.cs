@@ -29,18 +29,59 @@ public static class TaxpoolVorlagenImport
             if (d.SteuerFuerCode(k.SteuerCode) is { } st && (st.SchluesselVSt.Length > 0 || st.SchluesselUSt.Length > 0))
                 s.KontoSteuerschluessel[k.Nummer] = st.SchluesselVSt + "|" + st.SchluesselUSt;
 
+        // ------------------------------------------------------------- Bankkonto
+        // Steht in buchhaltung.json ein Bankkonto, das in Taxpool nie bebucht wird, das tatsächlich genutzte übernehmen
+        var banken = d.Konten.Values
+            .Where(k => !s.IstPersonenkonto(k.Nummer) && k.Name.TrimStart().StartsWith("Bank", StringComparison.OrdinalIgnoreCase)
+                        && !k.Name.Contains("geb", StringComparison.OrdinalIgnoreCase) && !k.Name.Contains("kosten", StringComparison.OrdinalIgnoreCase))
+            .Select(k => (k.Nummer, k.Name, Nutzung: d.KontoNutzung.GetValueOrDefault(k.Nummer)))
+            .Where(k => k.Nutzung > 0)
+            .OrderByDescending(k => k.Nutzung).ToList();
+        if (banken.Count > 0 && d.KontoNutzung.GetValueOrDefault(s.Bankkonto) == 0)
+        {
+            e.Hinweise.Add($"Bankkonto auf {banken[0].Nummer} \"{banken[0].Name}\" umgestellt (bisher {s.Bankkonto}, in Taxpool nicht bebucht)." +
+                           (banken.Count > 1 ? " Weitere genutzte Bankkonten: " + string.Join(", ", banken.Skip(1).Select(b => $"{b.Nummer} {b.Name}")) + "." : ""));
+            s.Bankkonto = banken[0].Nummer;
+        }
+        var bankKonten = new HashSet<int>(banken.Select(b => b.Nummer)) { s.Bankkonto };
+
         // ------------------------------------------------------------- Personenkonten
         foreach (var (konto, name) in d.Personen)
         {
+            // Im Debitorenbereich angelegte Aufwands-/Erlöskonten (z. B. 20000 "Serverkosten") sind keine Kunden
+            if (konto >= s.DebitorenVon && konto <= s.DebitorenBis && d.Konten.TryGetValue(konto, out var kt) && kt.Typ == 1)
+            {
+                e.Hinweise.Add($"{konto} {name}: in Taxpool als Aufwands-/Erlöskonto geführt - nicht als Kunde übernommen.");
+                if (dir.Get(konto) is { Suchbegriffe.Count: 0 } alt) dir.Konten.Remove(alt); // früher irrtümlich übernommen
+                continue;
+            }
             if (!s.IstPersonenkonto(konto))
             {
                 e.Hinweise.Add($"Personenkonto {konto} {name}: liegt außerhalb der Nummernkreise in buchhaltung.json - übergangen.");
                 continue;
             }
             var art = konto >= s.DebitorenVon && konto <= s.DebitorenBis ? PersonenArt.Debitor : PersonenArt.Kreditor;
-            dir.Upsert(konto, name, art);
+            dir.Upsert(konto, name, art).Nutzung = d.KontoNutzung.GetValueOrDefault(konto);
             e.Personenkonten++;
         }
+
+        // Übliches Gegenkonto je Personenkonto aus den Taxpool-Buchungen (nur wo keins von Hand gesetzt ist)
+        int standard = 0;
+        foreach (var p in dir.Konten.Where(p => p.StandardSachkonto == 0 || p.StandardAusTaxpool))
+        {
+            if (!d.Gegenkonten.TryGetValue(p.Konto, out var gegen)) continue;
+            var best = gegen
+                .Where(g => !bankKonten.Contains(g.Key) && !s.IstPersonenkonto(g.Key) && s.IstSachkonto(g.Key) && g.Key >= 1000)
+                .OrderByDescending(g => g.Value).ThenBy(g => g.Key)
+                .Select(g => g.Key).FirstOrDefault();
+            if (best == 0) continue;
+            p.StandardSachkonto = best;
+            p.StandardBuSchluessel = Bu(best, p.Art == PersonenArt.Kreditor, -1, d);
+            p.StandardAusTaxpool = true;
+            standard++;
+        }
+        if (standard > 0)
+            e.Hinweise.Add($"Für {standard} Personenkonten das übliche Gegenkonto aus den Taxpool-Buchungen als Standard-Sachkonto übernommen.");
 
         // ------------------------------------------------------------- Vorlagen
         var sichtbar = d.Vorlagen.Where(v => v.Anzeigen && (v.BisJahr <= 0 || v.BisJahr >= aktJahr)).ToList();

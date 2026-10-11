@@ -232,13 +232,31 @@ internal sealed class KontierungPanel : UserControl
 
     private Booking? Current => _list.CurrentRow?.Tag as Booking;
 
-    private void FillCombos()
+    private PersonenArt? _personListeFuer = PersonenArt.Debitor; // ungleich null erzwingt beim ersten Mal das Füllen
+
+    /// <summary>
+    /// Auswahlliste der Personenkonten nach Richtung sortiert: bei Abbuchungen zuerst die Lieferanten, bei Eingängen
+    /// zuerst die Kunden. Die anderen bleiben dahinter wählbar (z. B. Amazon-Erstattung als Eingang).
+    /// </summary>
+    private void PersonenListe(decimal betrag)
     {
+        PersonenArt? zuerst = betrag < 0 ? PersonenArt.Kreditor : betrag > 0 ? PersonenArt.Debitor : null;
+        if (_personListeFuer == zuerst && _cmbPerson.Items.Count > 0) return;
+        _personListeFuer = zuerst;
+        var text = _cmbPerson.Text;
         _cmbPerson.BeginUpdate();
         _cmbPerson.Items.Clear();
         _cmbPerson.Items.Add(KeinPersonenkonto);
-        foreach (var k in Tp.Personen.Konten.OrderBy(k => k.Konto)) _cmbPerson.Items.Add(k.ToString());
+        foreach (var k in Tp.Personen.Konten.OrderBy(k => zuerst is not null && k.Art != zuerst).ThenBy(k => k.Konto))
+            _cmbPerson.Items.Add(k.ToString());
         _cmbPerson.EndUpdate();
+        _cmbPerson.Text = text;
+    }
+
+    private void FillCombos()
+    {
+        _cmbPerson.Items.Clear(); // neu füllen (z. B. nach neuen Personenkonten)
+        PersonenListe(Current?.Amount ?? 0);
 
         var keep = _cmbVorlage.SelectedItem as KontierungsRegel;
         _cmbVorlage.BeginUpdate();
@@ -376,6 +394,7 @@ internal sealed class KontierungPanel : UserControl
 
             _lblBooking.Text = $"{b.Number}   {b.Date:dd.MM.yyyy}   {b.Amount.ToString("N2", De)} EUR   {b.Category.Text()}   " +
                                KontierungsVorschlag.Kurztext(b);
+            PersonenListe(b.Amount);
             _cmbPerson.Text = k.Personenkonto is int pk ? (Tp.Personen.Get(pk)?.ToString() ?? pk.ToString(CultureInfo.InvariantCulture)) : KeinPersonenkonto;
             _chkEinbuchen.Checked = k.RechnungEinbuchen;
             _chkEinbuchen.Enabled = k.Personenkonto is not null;
@@ -464,9 +483,41 @@ internal sealed class KontierungPanel : UserControl
         if (konto == k.Personenkonto) return;
         bool vorher = k.Personenkonto is not null;
         k.Personenkonto = konto;
+        var person = konto is int nr ? Tp.Personen.Get(nr) : null;
         if (konto is null) k.RechnungEinbuchen = false;
+        else if (person is { Art: PersonenArt.Debitor } && b.Amount > 0) k.RechnungEinbuchen = false; // Zahlungseingang: OP ausgleichen
         else if (!vorher) k.RechnungEinbuchen = !b.Category.IsCustomerPayment();
+        // Standard-Sachkonto des Personenkontos übernehmen, wo noch keins eingetragen ist
+        if (person is { StandardSachkonto: > 0 } && k.RechnungEinbuchen)
+            foreach (var z in k.Zeilen.Where(z => z.Sachkonto == 0))
+            {
+                z.Sachkonto = person.StandardSachkonto;
+                if (z.BuSchluessel.Length == 0) z.BuSchluessel = person.StandardBuSchluessel;
+            }
         Changed();
+
+        // Von Hand gewählt und nicht erkannt: Suchbegriff merken anbieten, damit es beim nächsten Mal klappt
+        if (person is not null && Tp.Personen.Erkennen(b.Text, b.Amount)?.Konto.Konto != person.Konto)
+            BeginInvoke(new Action(() => SuchbegriffAnbieten(b, person)));
+    }
+
+    private void SuchbegriffAnbieten(Booking b, PersonAccount person)
+    {
+        var vorschlag = b.PayerName.Length > 0 ? b.PayerName
+            : string.Join(" ", KontierungsVorschlag.Kurztext(b).Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2));
+        var term = Prompt.Ask(this, "Personenkonto merken",
+            $"{person} wurde aus dem Buchungstext nicht erkannt. Welcher Text im Kontoauszug steht für dieses Konto? " +
+            "Er wird als Suchbegriff gespeichert (Abbrechen = nicht merken).", vorschlag);
+        if (string.IsNullOrWhiteSpace(term)) return;
+        if (!person.Suchbegriffe.Contains(term, StringComparer.OrdinalIgnoreCase)) person.Suchbegriffe.Add(term);
+        Tp.SavePersonen();
+        if (_session is not null)
+        {
+            var n = Tp.NeuVorschlagen(_session.Statement);
+            Save();
+            RefreshList();
+            _status($"Suchbegriff \"{term}\" für {person} gespeichert, {n} offene Buchung(en) neu vorgeschlagen.");
+        }
     }
 
     private void OnPersonNeu()

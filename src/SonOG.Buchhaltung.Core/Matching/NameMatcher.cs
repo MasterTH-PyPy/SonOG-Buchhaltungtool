@@ -49,6 +49,9 @@ public static class NameMatcher
         return Tokens(name).Any(t => t.Length >= 4 && haystack.Any(h => TokenEquals(t, h)));
     }
 
+    /// <summary>True, wenn <paramref name="token"/> (normalisiert) unter den Wörtern des Textes vorkommt (gleiche Regeln wie beim Namensvergleich).</summary>
+    public static bool ContainsToken(IReadOnlyList<string> textTokens, string token) => textTokens.Any(t => TokenEquals(token, t));
+
     private static bool TokenEquals(string a, string b)
     {
         if (a == b) return true;

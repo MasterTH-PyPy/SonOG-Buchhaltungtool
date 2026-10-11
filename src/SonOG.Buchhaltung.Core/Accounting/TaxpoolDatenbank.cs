@@ -308,6 +308,7 @@ public static class TaxpoolDatenbank
         if (Tab("Konten2007", "Konten2006") is { } konten) Konten(konten, daten);
         if (Tab("Steuersaetze") is { } steuer) Steuern(steuer, daten);
         if (Tab("debikrediinfo") is { } personen) Personen(personen, daten);
+        if (Tab("Buchungen") is { } buchungen) Historie(buchungen, daten);
         return daten;
     }
 
@@ -383,6 +384,7 @@ public static class TaxpoolDatenbank
                 Name = TaxpoolTabelle.Wert(z, iName).Trim(),
                 SteuerCode = Ganz(TaxpoolTabelle.Wert(z, iSt)),
                 Automatik = TaxpoolTabelle.Wert(z, iAuto) == "1",
+                Typ = Ganz(TaxpoolTabelle.Wert(z, t.Index("KONTENTYP_ID"))),
                 Anzeigen = TaxpoolTabelle.Wert(z, iAnz) != "0",
             };
             // doppelte Nummern: sichtbares Konto mit Namen gewinnt
@@ -432,6 +434,57 @@ public static class TaxpoolDatenbank
         return int.TryParse(p[0], out var day) && int.TryParse(p[1], out var m) && int.TryParse(p[2], out var y) && y > 1900 && m is >= 1 and <= 12 && day is >= 1 and <= 31
             ? new DateOnly(y, m, Math.Min(day, DateTime.DaysInMonth(y, m)))
             : null;
+    }
+
+    /// <summary>
+    /// Wertet die Buchungen aus: wie oft jedes Konto bebucht wurde (z. B. um das tatsächlich genutzte Bankkonto zu finden)
+    /// und welche Konten in denselben Buchungen gegenüberstanden (für das übliche Gegenkonto je Personenkonto).
+    /// Stornierte Buchungen zählen nicht. Für die Gegenkonten zählen nur die letzten drei Jahre mit Buchungen.
+    /// </summary>
+    private static void Historie(TaxpoolTabelle t, TaxpoolDaten d)
+    {
+        int iSoll = Erstes(t, "SOLLKONTO_NUMMER_SICHERUNG", "Soll-Kontonr.", "SOLLKONTO_NUMMER");
+        int iHaben = Erstes(t, "HABENKONTO_NUMMER_SICHERUNG", "Haben-Kontonr.", "HABENKONTO_NUMMER");
+        int iStorno = t.Index("STORNO"), iDatum = t.Index("BELEGDATUM"), iBetrag = t.Index("BRUTTO_BETRAG");
+        if (iSoll < 0 || iHaben < 0) return;
+
+        var paare = new List<(int Soll, int Haben, int Jahr)>();
+        foreach (var z in t.Zeilen)
+        {
+            if (TaxpoolTabelle.Wert(z, iStorno) == "1") continue;
+            int soll = Ganz(TaxpoolTabelle.Wert(z, iSoll), 0), haben = Ganz(TaxpoolTabelle.Wert(z, iHaben), 0);
+            if (soll <= 0 || haben <= 0 || soll == haben) continue;
+            int jahr = Datum(TaxpoolTabelle.Wert(z, iDatum))?.Year ?? 0;
+            paare.Add((soll, haben, jahr));
+        }
+        if (paare.Count == 0) return;
+        int bisJahr = paare.Max(p => p.Jahr);
+        // Nutzung nur aus den letzten beiden Jahren (z. B. Bank 1200 bis 2010, danach 1210)
+        foreach (var (soll, haben, jahr) in paare.Where(p => p.Jahr == 0 || p.Jahr >= bisJahr - 1))
+        {
+            d.KontoNutzung[soll] = d.KontoNutzung.GetValueOrDefault(soll) + 1;
+            d.KontoNutzung[haben] = d.KontoNutzung.GetValueOrDefault(haben) + 1;
+        }
+        foreach (var (soll, haben, jahr) in paare.Where(p => p.Jahr == 0 || p.Jahr > bisJahr - 3))
+        {
+            void Zaehle(int person, int gegen)
+            {
+                if (!d.Gegenkonten.TryGetValue(person, out var map)) d.Gegenkonten[person] = map = new Dictionary<int, int>();
+                map[gegen] = map.GetValueOrDefault(gegen) + 1;
+            }
+            Zaehle(soll, haben);
+            Zaehle(haben, soll);
+        }
+    }
+
+    private static int Erstes(TaxpoolTabelle t, params string[] namen)
+    {
+        foreach (var n in namen)
+        {
+            int i = t.Index(n);
+            if (i >= 0) return i;
+        }
+        return -1;
     }
 
     private static void Personen(TaxpoolTabelle t, TaxpoolDaten d)
@@ -486,6 +539,8 @@ public sealed class TaxpoolKonto
     /// <summary>Automatikkonto: Steuer wird vom Konto selbst gerechnet, kein BU-Schlüssel.</summary>
     public bool Automatik { get; init; }
     public bool Anzeigen { get; init; } = true;
+    /// <summary>Kontentyp in Taxpool (1 = Aufwand/Ertrag, 2 = Bestand, 0 = sonstige).</summary>
+    public int Typ { get; init; } = -1;
 }
 
 public sealed class TaxpoolSteuer
@@ -503,6 +558,12 @@ public sealed class TaxpoolDaten
     /// <summary>Steuersätze nach ID. Der Steuercode in Vorlagen/Konten entspricht ID - 1.</summary>
     public Dictionary<int, TaxpoolSteuer> Steuern { get; } = new();
     public Dictionary<int, string> Personen { get; } = new();
+
+    /// <summary>Anzahl Buchungen je Konto in den letzten beiden Jahren mit Buchungen (aus der Buchungstabelle).</summary>
+    public Dictionary<int, int> KontoNutzung { get; } = new();
+
+    /// <summary>Konto → (Gegenkonto → Anzahl gemeinsamer Buchungen), letzte drei Jahre.</summary>
+    public Dictionary<int, Dictionary<int, int>> Gegenkonten { get; } = new();
 
     public TaxpoolSteuer? SteuerFuerCode(int code) => code > 0 && Steuern.TryGetValue(code + 1, out var s) ? s : null;
 }

@@ -62,8 +62,24 @@ public sealed class KontierungsVorschlag
         var regel = _s.Regeln.FirstOrDefault(r => r.Passt(b.Text, b.Category.ToString(), b.Amount));
         if (regel is not null) return AusRegel(b, regel);
 
-        // 3. Personenkonto über Suchbegriff mit Standard-Sachkonto
-        var person = _dir.FindByText(b.Text);
+        // 3. Personenkonto aus dem Buchungstext (Suchbegriff, Name oder markanter Namensteil; Richtung beachtet)
+        var personTreffer = _dir.Erkennen(b.Text, b.Amount);
+        var person = personTreffer?.Konto;
+
+        // 3a. Zahlungseingang eines Kunden: Forderung steht aus der Sollstellung schon auf dem Debitor → nur ausgleichen
+        if (person is { Art: PersonenArt.Debitor } && b.Amount > 0)
+        {
+            return new Kontierung
+            {
+                Personenkonto = person.Konto,
+                RechnungEinbuchen = false,
+                Quelle = KontierungsQuelle.Regel,
+                Hinweis = $"Zahlungseingang {person} (erkannt über {personTreffer!.Grund}) - gleicht den offenen Posten aus",
+                Zeilen = { new KontierungsZeile { Betrag = betrag, Text = text } },
+            };
+        }
+
+        // 3b. Lieferant (oder Kunde bei Abbuchung) mit Standard-Sachkonto: Beleg einbuchen, Zahlung ausbuchen
         if (person is { StandardSachkonto: > 0 })
         {
             return new Kontierung
@@ -71,7 +87,7 @@ public sealed class KontierungsVorschlag
                 Personenkonto = person.Konto,
                 RechnungEinbuchen = true,
                 Quelle = KontierungsQuelle.Regel,
-                Hinweis = "Standardkonto von " + person,
+                Hinweis = "Standardkonto von " + person + " (erkannt über " + personTreffer!.Grund + ")",
                 Zeilen = { new KontierungsZeile { Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Text = text } },
             };
         }
@@ -82,7 +98,7 @@ public sealed class KontierungsVorschlag
             Personenkonto = person?.Konto,
             RechnungEinbuchen = person is not null,
             Quelle = KontierungsQuelle.Offen,
-            Hinweis = "Kein Vorschlag - Konto wählen" + (person is null ? "" : " (Personenkonto erkannt: " + person + ")"),
+            Hinweis = "Kein Vorschlag - Konto wählen" + (person is null ? "" : " (Personenkonto " + person + " erkannt über " + personTreffer!.Grund + ")"),
             Zeilen = { new KontierungsZeile { Betrag = betrag, Text = text } },
         };
     }
@@ -91,14 +107,15 @@ public sealed class KontierungsVorschlag
     public Kontierung AusRegel(Booking b, KontierungsRegel regel)
     {
         PersonAccount? person = null;
+        PersonTreffer? treffer = null;
         if (regel.Personenkonto > 0) person = _dir.Get(regel.Personenkonto);
-        else if (regel.PersonenkontoSuchen) person = _dir.FindByText(b.Text);
+        else if (regel.PersonenkontoSuchen) person = (treffer = _dir.Erkennen(b.Text, b.Amount))?.Konto;
 
         int? personKonto = regel.Personenkonto > 0 ? regel.Personenkonto : person?.Konto;
         int sachkonto = regel.Sachkonto > 0 ? regel.Sachkonto : person?.StandardSachkonto ?? 0;
         var bu = regel.Sachkonto > 0 ? regel.BuSchluessel : (person?.StandardBuSchluessel ?? regel.BuSchluessel);
 
-        var hinweis = "Regel: " + regel;
+        var hinweis = "Regel: " + regel + (treffer is null ? "" : ", " + person + " erkannt über " + treffer.Grund);
         var quelle = KontierungsQuelle.Regel;
         if (regel.PersonenkontoSuchen && personKonto is null)
         {
