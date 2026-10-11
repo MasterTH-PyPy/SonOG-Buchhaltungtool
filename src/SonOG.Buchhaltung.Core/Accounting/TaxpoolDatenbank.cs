@@ -39,7 +39,8 @@ public sealed class TaxpoolTabelle
 public static class TaxpoolDatenbank
 {
     private static readonly byte[] Ymra = "YMRA"u8.ToArray();
-    private static readonly byte[] FeldKopf = { (byte)'Y', (byte)'M', (byte)'R', (byte)'A', 2, 0, 0, 0, 0, 0, 0, 0 };
+    /// <summary>Länge des Kopfes einer Felddefinition: "YMRA", Version (int32, 2 bzw. 3), 0 (int32).</summary>
+    private const int FeldKopfLaenge = 12;
     private static readonly byte[] SatzKennung = { 0xF3, 0xEE, 0x27, 0x04 };
     private static readonly byte[] SfxKennung = "!TP_SFX!"u8.ToArray();
     private static readonly Regex GuidRx = new(@"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$", RegexOptions.Compiled);
@@ -163,36 +164,66 @@ public static class TaxpoolDatenbank
     // Tabelle
     // ---------------------------------------------------------------------------------------------
 
-    public static TaxpoolTabelle TabelleLesen(string name, byte[] o)
+    /// <summary>
+    /// Ab Taxpool-Tabellenversion 0x13 ist der Tabelleninhalt gzip-komprimiert: Kopf "YMRA", Version, Flags,
+    /// Größe entpackt, Größe gepackt, GUID der Tabelle, int32, 1 Byte, danach der gzip-Strom.
+    /// Ältere Tabellen (Version 0x0F) sind unkomprimiert und werden unverändert zurückgegeben.
+    /// </summary>
+    public static byte[] Entpackt(byte[] o)
+    {
+        if (o.Length < 40 || !o.AsSpan().StartsWith(Ymra)) return o;
+        int guidLen = I32(o, 20);
+        int start = guidLen is > 0 and < 128 ? 20 + 4 + guidLen + 4 + 1 : -1;
+        if (start < 0 || start + 2 > o.Length || o[start] != 0x1F || o[start + 1] != 0x8B)
+        {
+            // Lage weicht ab: gzip-Kennung (1F 8B 08) im Kopfbereich suchen
+            start = o.AsSpan(0, Math.Min(o.Length, 256)).IndexOf(new byte[] { 0x1F, 0x8B, 0x08 });
+            if (start < 0) return o;
+        }
+        int csize = I32(o, 16);
+        int len = csize > 0 && start + csize <= o.Length ? csize : o.Length - start;
+        using var input = new MemoryStream(o, start, len, writable: false);
+        using var gz = new GZipStream(input, CompressionMode.Decompress);
+        using var output = new MemoryStream(Math.Max(I32(o, 12), 1024));
+        gz.CopyTo(output);
+        return output.ToArray();
+    }
+
+    private static bool IstFeldKopf(byte[] o, int i) =>
+        i + FeldKopfLaenge <= o.Length && o.AsSpan(i, 4).SequenceEqual(Ymra) && I32(o, i + 4) is >= 2 and <= 8 && I32(o, i + 8) == 0;
+
+    public static TaxpoolTabelle TabelleLesen(string name, byte[] roh)
     {
         var t = new TaxpoolTabelle { Name = name };
+        var o = Entpackt(roh);
         var span = o.AsSpan();
 
-        // Felddefinitionen
+        // Felddefinitionen (Version 2: Name steht direkt vor der nächsten Definition, Version 3: danach folgen noch Füllbytes)
         var defs = new List<int>();
-        for (int i = span.IndexOf(FeldKopf); i >= 0;)
+        for (int i = span.IndexOf(Ymra); i >= 0;)
         {
-            defs.Add(i);
-            int next = span[(i + 1)..].IndexOf(FeldKopf);
+            if (IstFeldKopf(o, i)) defs.Add(i);
+            int next = span[(i + 1)..].IndexOf(Ymra);
             i = next < 0 ? -1 : i + 1 + next;
         }
         int ersterSatz = span.IndexOf(SatzKennung);
         for (int k = 0; k < defs.Count; k++)
         {
-            int p = defs[k] + FeldKopf.Length;
+            int p = defs[k] + FeldKopfLaenge;
             int len = I32(o, p);
             if (len is <= 0 or > 128 || p + 4 + len > o.Length) continue;
             var label = Encoding.UTF8.GetString(o, p + 4, len);
-            int end = k + 1 < defs.Count ? defs[k + 1] : NaechsteGrenze(o, defs[k] + 12);
+            int end = k + 1 < defs.Count ? defs[k + 1] : NaechsteGrenze(o, defs[k] + FeldKopfLaenge);
+            if (ersterSatz > defs[k] && end > ersterSatz) end = ersterSatz;
+            // interner Feldname: die letzte Zeichenkette (Länge + druckbarer Text) im Bereich der Definition
             string internerName = label;
-            for (int n = 1; n <= 128; n++)
+            for (int q = p + 4 + len; q + 6 <= end; q++)
             {
-                int q = end - n - 4;
-                if (q < p + 4 + len) break;
-                if (I32(o, q) == n && Druckbar(o, q + 4, n))
+                int n = I32(o, q);
+                if (n is >= 1 and <= 128 && q + 4 + n <= end && Druckbar(o, q + 4, n))
                 {
                     internerName = Encoding.UTF8.GetString(o, q + 4, n);
-                    break;
+                    q += 3 + n;
                 }
             }
             t.Felder.Add((internerName, label));
@@ -251,7 +282,7 @@ public static class TaxpoolDatenbank
 
     private static bool Druckbar(byte[] o, int start, int n)
     {
-        for (int i = start; i < start + n; i++) if (o[i] < 0x20) return false;
+        for (int i = start; i < start + n; i++) if (o[i] < 0x20 || o[i] >= 0xFE) return false; // 0xFE/0xFF kommen in UTF-8 nicht vor
         return true;
     }
 

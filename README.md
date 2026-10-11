@@ -103,7 +103,10 @@ nicht bestätigten und nicht von Hand bearbeiteten Buchungen an.
   nächsten Einlesen eines Auszugs automatisch neu.
 
 Aufbau der Datensicherung: zlib-komprimierte Tabellen (`Buchungstexte.dbd` = Vorlagen, `Konten2007.dbd`,
-`Steuersaetze.dbd`, `debikrediinfo.dbd`, …) mit Inhaltsverzeichnis und Kennung `!TP_SFX!` am Ende. Eine einzelne
+`Steuersaetze.dbd`, `debikrediinfo.dbd`, …) mit Inhaltsverzeichnis und Kennung `!TP_SFX!` am Ende. Neuere
+Taxpool-Versionen packen jede Tabelle zusätzlich mit gzip (Tabellenkennung 0x13, Felddefinitionen Version 3); beide
+Varianten werden gelesen, auch gemischt in einer Datei. Umbuchungsvorlagen ohne Bankkonto (z. B. die KFZ-Prozent-Regeln)
+werden übergangen, weil sie auf den Kontoauszug nicht passen. Eine einzelne
 `*.dbd`-Datei oder ein Ordner mit `*.dbd` geht auch. Ins Taxpool zurück wird nie geschrieben – Buchungen kommen nur
 über die DATEV-Importdatei.
 

@@ -21,24 +21,35 @@ public class TaxpoolDatenbankTests
     }
 
     /// <summary>Tabelle: Kopf, Felddefinitionen (Beschriftung ... Name), Datensätze (Kennung, GUID, 0, Feldanzahl, Werte).</summary>
-    internal static byte[] Tabelle((string Name, string Label)[] felder, params string[][] zeilen)
+    internal static byte[] Tabelle((string Name, string Label)[] felder, params string[][] zeilen) => Tabelle(2, felder, zeilen);
+
+    /// <param name="feldVersion">2 = ältere Taxpool-Version, 3 = neuere (Name gefolgt von Füllbytes FF..FF 00 00).</param>
+    internal static byte[] Tabelle(int feldVersion, (string Name, string Label)[] felder, params string[][] zeilen)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
-        w.Write("YMRA"u8.ToArray());
-        w.Write(15);
-        w.Write(new byte[8]);
-        Str(w, Guid.NewGuid().ToString().ToUpperInvariant());
-        w.Write(new byte[20]);
+        if (feldVersion == 2)
+        {
+            w.Write("YMRA"u8.ToArray());
+            w.Write(15);
+            w.Write(new byte[8]);
+            Str(w, Guid.NewGuid().ToString().ToUpperInvariant());
+            w.Write(new byte[20]);
+        }
+        else
+        {
+            w.Write(new byte[] { 1, 0, 0, 0, 0x45, 0, 0, 0, 1, 0, 0, 0, (byte)felder.Length, 0 });
+        }
         foreach (var (name, label) in felder)
         {
             w.Write("YMRA"u8.ToArray());
-            w.Write(2);
+            w.Write(feldVersion);
             w.Write(0);
             Str(w, label);
             w.Write(new byte[] { 0, 0, 0, 1, 8, 0, 0, 0 });
             w.Write(new byte[60]);
             Str(w, name);
+            if (feldVersion >= 3) w.Write(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0 });
         }
         int nr = 0;
         foreach (var z in zeilen)
@@ -53,6 +64,26 @@ public class TaxpoolDatenbankTests
         }
         w.Write("YMRA"u8.ToArray()); // Index-Bereich am Ende
         w.Write(new byte[12]);
+        return ms.ToArray();
+    }
+
+    /// <summary>Neuere Taxpool-Version (Tabellenkennung 0x13): Tabelleninhalt gzip-komprimiert hinter einem Kopf.</summary>
+    internal static byte[] Komprimiert(byte[] inhalt)
+    {
+        using var gzMs = new MemoryStream();
+        using (var gz = new GZipStream(gzMs, CompressionLevel.Optimal, leaveOpen: true)) gz.Write(inhalt);
+        var packed = gzMs.ToArray();
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write("YMRA"u8.ToArray());
+        w.Write(0x13);
+        w.Write(0x20000);
+        w.Write(inhalt.Length);
+        w.Write(packed.Length);
+        Str(w, Guid.NewGuid().ToString().ToUpperInvariant());
+        w.Write(-1);
+        w.Write((byte)0);
+        w.Write(packed);
         return ms.ToArray();
     }
 
@@ -173,6 +204,48 @@ public class TaxpoolDatenbankTests
         Assert.Equal(4940, TaxpoolDatenbank.KontoNummer(t.Zeilen[2][1]));
         Assert.Equal(1, TaxpoolDatenbank.SteuerCode(t.Zeilen[2][7]));
         Assert.Equal(-1, TaxpoolDatenbank.SteuerCode(""));
+    }
+
+    [Fact]
+    public void Newer_version_with_gzip_tables_and_field_version_3_is_read()
+    {
+        // 33. Feld wie in der neueren Taxpool-Version; Splitkopf ohne ID (Umbuchung ohne Bank)
+        var felder = VorlagenFelder.Append(("Neu", "Neu")).ToArray();
+        string[] Z(string[] v) => v.Append("1").ToArray();
+        var inhalt = Tabelle(3, felder,
+            Z(V("Telefon", "Telefon\n4920", "", id: "1")),
+            Z(V("Pfungstädter Eigene Energie Re-Nr.: 2025-", "Bank\n1200", "Erlöse 19 % USt\n8400", steuer: "USt. normal\n2", id: "59")),
+            Z(V("KFZ-0.5-Prozent-Regel", "Unentgeltliche Wertabgaben\n1880", "", split: "1", id: "")),
+            Z(V("Anteil 80% mit Steuern", "", "Verwendung 19 %\n8921", betrag: "0.8", split: "1", parent: "62", id: "")),
+            Z(V("Abzug", "Verwendung ohne\n8924", "", betrag: "0.3", split: "1", parent: "62", id: "")),
+            Z(V("Alt", "Telefon\n4920", "", bis: "2019", id: "2")));
+        var path = Path.Combine(Path.GetTempPath(), "sonog-tp-" + Guid.NewGuid() + ".dbb");
+        File.WriteAllBytes(path, Archiv(
+            ("Buchungstexte.dbd", Komprimiert(inhalt)),
+            ("Konten2007.dbd", Komprimiert(Tabelle(3,
+                new[] { ("NAME", "NAME"), ("NUMMER", "NUMMER"), ("STEUERSATZ_ID", "STEUERSATZ_ID"), ("AUTOMATIKKONTO", "AUTOMATIKKONTO") },
+                new[] { "Telefon", "4920", "2", "0" }, new[] { "Erlöse 19 % / 16 % USt", "8400", "2", "1" }))),
+            ("Steuersaetze.dbd", Komprimiert(SteuerTabelle())),
+            ("debug.dbd", VorlagenTabelle()))); // ältere, unkomprimierte Tabelle im selben Archiv
+        try
+        {
+            var t = TaxpoolDatenbank.TabelleLesen("Buchungstexte", TaxpoolDatenbank.Tabellen(path)["Buchungstexte"]);
+            Assert.Equal(14, t.Felder.Count);
+            Assert.Equal(("Ab Jahr", "Gültig ab Jahr"), t.Felder[5]);
+            Assert.Equal(6, t.Zeilen.Count);
+
+            var d = TaxpoolDatenbank.Lesen(path);
+            Assert.Equal("Erlöse 19 % / 16 % USt", d.Konten[8400].Name);
+            var s = new AccountingSettings();
+            var e = TaxpoolVorlagenImport.Uebernehmen(d, s, new PersonAccountDirectory(), 2026);
+            Assert.Equal((4920, "9"), (R(s, "Telefon").Sachkonto, R(s, "Telefon").BuSchluessel));
+            var pee = R(s, "Pfungstädter Eigene Energie Re-Nr.: 2025-");
+            Assert.Equal((8400, "", Richtung.Eingang), (pee.Sachkonto, pee.BuSchluessel, pee.Richtung));
+            Assert.Contains(e.Hinweise, h => h.Contains("KFZ-0.5-Prozent-Regel") && h.Contains("Umbuchungsvorlage"));
+            Assert.DoesNotContain(e.Hinweise, h => h.Contains("ohne erkennbaren Kopf"));
+            Assert.Equal(2, e.Vorlagen);
+        }
+        finally { File.Delete(path); }
     }
 
     [Fact]

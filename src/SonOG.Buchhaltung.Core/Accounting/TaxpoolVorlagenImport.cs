@@ -50,20 +50,36 @@ public static class TaxpoolVorlagenImport
         var koepfe = sichtbar.Where(v => v.IstSplit && v.ParentId < 0).OrderBy(v => v.Id).ToList();
         var einzel = sichtbar.Where(v => !v.IstSplit).ToList();
 
+        int bank = s.Bankkonto;
+        bool OhneBank(TaxpoolVorlage v) => v.SollKonto != bank && v.HabenKonto != bank;
+        // Umbuchungsvorlagen (z. B. KFZ-1-%-Regel: 1880 an 8921/8924) haben weder im Kopf noch in den Teilen ein Bankkonto
+        bool IstUmbuchungsKopf(TaxpoolVorlage k) => OhneBank(k) && (k.SollKonto != 0 || k.HabenKonto != 0);
+        var umbuchungen = koepfe.Where(IstUmbuchungsKopf).ToList();
+        koepfe = koepfe.Except(umbuchungen).ToList();
+
         // Teile einer Splitvorlage: gleiche ParentID; der Kopf ist die Splitvorlage mit der höchsten ID unterhalb der Teile
+        // (in Taxpool steht beim Kopf keine Verweisnummer auf die Teile; neue Vorlagen haben teils gar keine ID)
         var gruppen = teile.GroupBy(v => v.ParentId).ToList();
         var teileJeKopf = new Dictionary<TaxpoolVorlage, List<TaxpoolVorlage>>();
+        int umbuchungsTeile = 0;
         foreach (var g in gruppen)
         {
             int minTeil = g.Min(v => v.Id);
-            var kopf = koepfe.LastOrDefault(k => k.Id < minTeil && !teileJeKopf.ContainsKey(k));
+            var kopf = minTeil > 0 ? koepfe.LastOrDefault(k => k.Id > 0 && k.Id < minTeil && !teileJeKopf.ContainsKey(k)) : null;
             if (kopf is null)
             {
+                if (g.All(OhneBank)) { umbuchungsTeile += g.Count(); continue; } // gehört zu einer Umbuchungsvorlage
                 e.Uebersprungen += g.Count();
-                e.Hinweise.Add($"Splitvorlage ohne Kopf: {string.Join(", ", g.Select(v => v.Bezeichnung))} - übergangen.");
+                e.Hinweise.Add($"Teile einer Splitvorlage ohne erkennbaren Kopf: {string.Join(", ", g.Select(v => v.Bezeichnung))} - übergangen.");
                 continue;
             }
             teileJeKopf[kopf] = g.OrderByDescending(v => Math.Abs(v.Betrag ?? 0)).ThenBy(v => v.Id).ToList();
+        }
+        if (umbuchungen.Count > 0)
+        {
+            e.Uebersprungen += umbuchungen.Count;
+            e.Hinweise.Add($"{umbuchungen.Count} Umbuchungsvorlage(n) ohne Bankkonto nicht übernommen (für den Kontoauszug nicht anwendbar): " +
+                           string.Join(", ", umbuchungen.Select(v => v.Bezeichnung)) + ".");
         }
 
         var neu = new List<KontierungsRegel>();
