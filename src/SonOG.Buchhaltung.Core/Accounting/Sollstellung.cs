@@ -70,7 +70,9 @@ public static class Sollstellung
         // Kundennummer im Debitorenbereich, aber noch nicht angelegt (neuer Kunde): nicht über den Namen raten
         bool neuerKunde = perKdNr is null && kdnr >= s.DebitorenVon && kdnr <= s.DebitorenBis;
         var debitor = perKdNr ?? (neuerKunde ? null : dir.FindDebitor(r.RecipientFirstLine, r.Recipient));
-        var name = debitor?.Name is { Length: > 0 } n ? n : r.RecipientFirstLine;
+        // Neuer Kunde, der in CAO steht: Debitor = Kundennummer, wird beim Export mit den CAO-Stammdaten für Taxpool angelegt
+        bool ausCao = neuerKunde && r.CaoKunde is { } ck && ck.Kundennummer.Trim() == r.Kundennummer;
+        var name = debitor?.Name is { Length: > 0 } n ? n : ausCao && r.CaoKunde!.Name.Length > 0 ? r.CaoKunde.Name : r.RecipientFirstLine;
         int erloes = debitor is { StandardSachkonto: > 0 } ? debitor.StandardSachkonto : s.SollstellungErloeskonto;
         string bu = debitor is { StandardSachkonto: > 0 } ? debitor.StandardBuSchluessel : s.SollstellungBuSchluessel;
         // Vorlage des Kunden (z. B. aus Taxpool "Immobilienverwaltung Gohr Re-Nr.:" an 8400) geht vor: Erlöskonto und Text
@@ -83,10 +85,11 @@ public static class Sollstellung
         var vorlagenText = debitor is null ? null : KontierungsVorschlag.KundenText(s, debitor.Konto, r.Number, name);
         return new Kontierung
         {
-            Personenkonto = debitor?.Konto,
+            Personenkonto = debitor?.Konto ?? (ausCao ? kdnr : null),
             RechnungEinbuchen = true,
-            Quelle = debitor is null ? KontierungsQuelle.Offen : KontierungsQuelle.Abgleich,
-            Hinweis = debitor is null
+            Quelle = debitor is null && !ausCao ? KontierungsQuelle.Offen : KontierungsQuelle.Abgleich,
+            Hinweis = ausCao ? $"Neuer Debitor {kdnr} aus CAO - wird beim Export für Taxpool angelegt"
+                : debitor is null
                 ? (neuerKunde ? $"Debitor {r.Kundennummer} noch nicht angelegt (neuer Kunde)"
                    : r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor" : "Debitor fehlt")
                 : perKdNr is not null ? ""
@@ -113,6 +116,7 @@ public static class Sollstellung
     /// </summary>
     public static List<CaoRechnung> FehlendeDebitoren(IEnumerable<SollstellungsPosten> posten, AccountingSettings s, PersonAccountDirectory dir) =>
         posten.Where(p => p.BereitsGestellt.Length == 0 && p.Rechnung.CaoKunde is not null)
+            .Where(p => p.Kontierung.Personenkonto is null || p.Kontierung.Personenkonto.ToString() == p.Rechnung.CaoKunde!.Kundennummer.Trim())
             .Select(p => p.Rechnung.CaoKunde!)
             .Where(c => int.TryParse(c.Kundennummer, out var k) && k >= s.DebitorenVon && k <= s.DebitorenBis && dir.Get(k) is null)
             .GroupBy(c => c.Kundennummer).Select(g => g.First())

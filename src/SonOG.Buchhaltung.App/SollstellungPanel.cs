@@ -107,7 +107,7 @@ internal sealed class SollstellungPanel : UserControl
             _caoEinstellungen?.Invoke(this);
             if (_index is not null) await OnLadenAsync(); // mit den neuen Zugangsdaten neu abgleichen
         };
-        _dtMonat.ValueChanged += (_, _) => { if (_index is not null) { Vorbereiten(); NeueDebitorenAnbieten(); } };
+        _dtMonat.ValueChanged += (_, _) => { if (_index is not null) Vorbereiten(); };
         _btnDebitor.Click += (_, _) => OnDebitorNeu();
         _btnPersonen.Click += (_, _) => OnPersonen();
         _btnFreigeben.Click += (_, _) => OnFreigeben();
@@ -134,7 +134,6 @@ internal sealed class SollstellungPanel : UserControl
             _index = await Task.Run(() => _service.ScanInvoices(folder, progress));
             Vorbereiten();
             if (_service.LetzterCaoHinweis.Length > 0) _status(_service.LetzterCaoHinweis);
-            NeueDebitorenAnbieten();
         }
         catch (Exception ex)
         {
@@ -190,10 +189,15 @@ internal sealed class SollstellungPanel : UserControl
         row.Cells["Datum"].Value = p.Rechnung.Date?.ToString("dd.MM.yyyy", De) ?? "";
         // Debitor kommt aus der Kundennummer; der gelesene Empfänger steht nur noch als Tooltip zur Kontrolle
         row.Cells["KdNr"].Value = p.Rechnung.Kundennummer;
-        row.Cells["KdNr"].ToolTipText = row.Cells["Nr"].ToolTipText = "Empfänger laut Rechnung: " + p.Rechnung.RecipientFirstLine;
+        row.Cells["KdNr"].ToolTipText = row.Cells["Nr"].ToolTipText =
+            (p.Rechnung.AusCao ? "Kunde, Betrag und Datum aus der CAO-Datenbank" : "Nicht in der CAO-Datenbank gefunden - nur aus dem PDF gelesen") +
+            "\nEmpfänger: " + p.Rechnung.RecipientFirstLine;
         row.Cells["Brutto"].Value = p.Rechnung.GrossAmount?.ToString("N2", De) ?? "?";
         row.Cells["Debitor"].Value = k.Personenkonto?.ToString(CultureInfo.InvariantCulture) ?? "";
-        row.Cells["DebitorName"].Value = k.Personenkonto is int pk ? Tp.Personen.Get(pk)?.Name ?? "(nicht im Verzeichnis)" : "";
+        row.Cells["DebitorName"].Value = k.Personenkonto is int pk
+            ? Tp.Personen.Get(pk)?.Name
+              ?? (p.Rechnung.CaoKunde is { } ck && ck.Kundennummer.Trim() == pk.ToString(CultureInfo.InvariantCulture) ? ck.Name + "  (neu aus CAO)" : "(nicht im Verzeichnis)")
+            : "";
         row.Cells["Erloes"].Value = z is { Sachkonto: > 0 } ? z.Sachkonto.ToString(CultureInfo.InvariantCulture) : "";
         row.Cells["Bu"].Value = z?.BuSchluessel ?? "";
         row.Cells["Erloes"].ReadOnly = row.Cells["Bu"].ReadOnly = row.Cells["Debitor"].ReadOnly = gestellt;
@@ -246,8 +250,12 @@ internal sealed class SollstellungPanel : UserControl
     private void UpdateInfo()
     {
         var sel = _posten.Where(p => p.Auswahl).ToList();
+        int cao = _posten.Count(p => p.Rechnung.AusCao);
         _lblInfo.Text = _posten.Count == 0 ? "" :
-            $"{sel.Count} von {_posten.Count} ausgewählt, Summe {sel.Sum(p => p.Rechnung.GrossAmount ?? 0).ToString("N2", De)} EUR";
+            $"{sel.Count} von {_posten.Count} ausgewählt, Summe {sel.Sum(p => p.Rechnung.GrossAmount ?? 0).ToString("N2", De)} EUR" +
+            (_service.Cao is { Eingerichtet: true }
+                ? $"  ·  CAO: {cao} von {_posten.Count} gefunden" + (cao == 0 && _service.LetzterCaoHinweis.Length > 0 ? " - " + _service.LetzterCaoHinweis : "")
+                : "  ·  CAO-Abgleich aus");
     }
 
     private void UpdateButtons()
@@ -255,28 +263,6 @@ internal sealed class SollstellungPanel : UserControl
         _btnExport.Enabled = _posten.Any(p => p.Auswahl);
         _btnDebitor.Enabled = _posten.Count > 0;
         _btnFreigeben.Enabled = _index is not null;
-    }
-
-    /// <summary>
-    /// Kundennummern aus CAO, die es als Debitor noch nicht gibt: anbieten, sie mit Name und Anschrift aus CAO anzulegen.
-    /// Beim Export der Sollstellung gehen sie als DATEV-Stammdaten für Taxpool mit.
-    /// </summary>
-    private void NeueDebitorenAnbieten()
-    {
-        var fehlend = Sollstellung.FehlendeDebitoren(_posten, Tp.Settings, Tp.Personen);
-        if (fehlend.Count == 0) return;
-        var liste = string.Join("\n", fehlend.Take(15).Select(c =>
-            $"• {c.Kundennummer}  {c.Name}" + (c.Ort.Length > 0 ? $"  ({(c.Plz + " " + c.Ort).Trim()})" : "")));
-        if (fehlend.Count > 15) liste += $"\n... und {fehlend.Count - 15} weitere";
-        var q = $"{fehlend.Count} Kunde(n) aus der CAO-Datenbank gibt es noch nicht als Debitor:\n\n{liste}\n\n" +
-                "Jetzt mit Kundennummer, Name und Anschrift aus CAO anlegen?\n" +
-                "Beim Export der Sollstellung wird dafür zusätzlich eine Stammdaten-Datei für Taxpool erzeugt.";
-        if (MessageBox.Show(this, q, "Neue Debitoren aus CAO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-        var neu = Tp.DebitorenAusCaoAnlegen(fehlend);
-        foreach (var p in _posten.Where(p => p.BereitsGestellt.Length == 0 && p.Kontierung.Personenkonto is null))
-            p.Kontierung = Sollstellung.KontierungFuer(p.Rechnung, Tp.Settings, Tp.Personen);
-        Fill();
-        _status($"{neu.Count} Debitor(en) aus CAO angelegt: {string.Join(", ", neu.Select(p => p.Konto))} - werden mit dem Export für Taxpool vorbereitet.");
     }
 
     private SollstellungsPosten? Current => _grid.CurrentRow?.Tag as SollstellungsPosten;

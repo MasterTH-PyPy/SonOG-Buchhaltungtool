@@ -255,6 +255,10 @@ public sealed class TaxpoolService
         var pruefungen = auswahl.SelectMany(Pruefen).ToList();
         Abbrechen(pruefungen);
 
+        // Neue Kunden aus CAO jetzt als Debitor anlegen; ihre Stammdaten gehen als eigene Datei mit
+        var neu = Sollstellung.FehlendeDebitoren(auswahl, Settings, Personen);
+        if (neu.Count > 0) DebitorenAusCaoAnlegen(neu);
+
         var rows = auswahl.SelectMany(Buchungssaetze.AusSollstellung).ToList();
         var monat = SollstellungState.MonatKey(year, month);
         var name = "Sollstellung_" + monat;

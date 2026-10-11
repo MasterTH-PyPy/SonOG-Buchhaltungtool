@@ -201,7 +201,10 @@ public static class Buchungssaetze
         else if (k.Summe != Math.Abs(brutto)) list.Add(new(PruefStufe.Fehler, nr, $"Summe {k.Summe:N2} ≠ Rechnungsbetrag {Math.Abs(brutto):N2}"));
         if (k.Personenkonto is not { } pk) list.Add(new(PruefStufe.Fehler, nr, "Debitor fehlt"));
         else if (pk < s.DebitorenVon || pk > s.DebitorenBis) list.Add(new(PruefStufe.Fehler, nr, $"{pk} ist kein Debitorenkonto"));
-        else if (dir.Get(pk) is null) list.Add(new(PruefStufe.Hinweis, nr, $"Debitor {pk} ist nicht im Verzeichnis - in Taxpool vorhanden?"));
+        else if (dir.Get(pk) is null)
+            list.Add(new(PruefStufe.Hinweis, nr, p.Rechnung.CaoKunde?.Kundennummer.Trim() == pk.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                ? $"Neuer Debitor {pk} aus CAO - wird beim Export angelegt (Stammdaten für Taxpool)"
+                : $"Debitor {pk} ist nicht im Verzeichnis - in Taxpool vorhanden?"));
         if (k.Personenkonto is int d && p.Rechnung.Kundennummer.Length > 0 && p.Rechnung.Kundennummer != d.ToString(System.Globalization.CultureInfo.InvariantCulture))
             list.Add(new(PruefStufe.Hinweis, nr, $"Debitor {d} weicht von der Kundennummer {p.Rechnung.Kundennummer} auf der Rechnung ab"));
         foreach (var z in k.Zeilen)
