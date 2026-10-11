@@ -31,7 +31,6 @@ public sealed class MainForm : Form
     private readonly Button _btnPrint = new() { Text = "Drucken (rückwärts) – Vorschau ...", AutoSize = true };
     private readonly CheckBox _chkMail = new() { Text = "Mails abrufen", AutoSize = true };
     private readonly Button _btnMail = new() { Text = "Mail-Postfächer ...", AutoSize = true };
-    private readonly Button _btnCao = new() { Text = "CAO-Datenbank ...", AutoSize = true };
     private readonly Button _btnReload = new() { Text = "Dokumente neu einlesen", AutoSize = true };
     private readonly PdfPreviewPanel _preview = new() { Dock = DockStyle.Fill };
     private readonly Button _btnRules = new() { Text = "Regeln öffnen", AutoSize = true };
@@ -56,7 +55,7 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
 
         _kontierung = new KontierungPanel(_service, () => _txtOutput.Text.Trim(), m => _lblStatus.Text = m);
-        _sollstellung = new SollstellungPanel(_service, () => _txtInvoices.Text.Trim(), () => _txtOutput.Text.Trim(), m => _lblStatus.Text = m);
+        _sollstellung = new SollstellungPanel(_service, () => _txtInvoices.Text.Trim(), () => _txtOutput.Text.Trim(), m => _lblStatus.Text = m, CaoEinstellungen);
 
         BuildLayout();
         LoadSettings();
@@ -97,7 +96,7 @@ public sealed class MainForm : Form
         inputs.Controls.Add(range, 1, inputs.RowCount - 1);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4), WrapContents = true };
-        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnReload, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnMail, _chkMail, _btnCao, _btnRules, _btnRelease, _chkOnlyReview });
+        buttons.Controls.AddRange(new Control[] { _btnLoad, _btnReload, _btnAccept, _btnAttach, _btnExport, _btnPrint, _chkPrint, _btnMail, _chkMail, _btnRules, _btnRelease, _chkOnlyReview });
         _chkPrint.Margin = new Padding(3, 8, 12, 3);
         _chkOnlyReview.Margin = new Padding(12, 8, 3, 3);
 
@@ -181,15 +180,6 @@ public sealed class MainForm : Form
             _settings.MailDaysAfter = dlg.DaysAfter;
             try { _settings.Save(); } catch (IOException) { }
         };
-        _btnCao.Click += (_, _) =>
-        {
-            using var dlg = new CaoForm(_settings.Cao);
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-            _settings.Cao = dlg.Result;
-            _service.Cao = _settings.Cao;
-            try { _settings.Save(); } catch (IOException) { }
-            _lblStatus.Text = _settings.Cao.Eingerichtet ? "CAO-Datenbank eingerichtet - wirkt beim nächsten Einlesen der Rechnungen." : "CAO-Abgleich aus.";
-        };
         _btnReload.Click += async (_, _) => await OnReloadDocumentsAsync();
         _preview.RemoveRequested += OnPreviewRemove;
         _btnRules.Click += (_, _) => OnOpenRules();
@@ -250,6 +240,17 @@ public sealed class MainForm : Form
     // ---------------------------------------------------------------------------------------------
     // Einstellungen
     // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Zugang zur CAO-Datenbank (Knopf im Reiter Sollstellung; gilt auch für den Zahlungsabgleich in Schritt 1).</summary>
+    private void CaoEinstellungen(IWin32Window owner)
+    {
+        using var dlg = new CaoForm(_settings.Cao);
+        if (dlg.ShowDialog(owner) != DialogResult.OK) return;
+        _settings.Cao = dlg.Result;
+        _service.Cao = _settings.Cao;
+        try { _settings.Save(); } catch (IOException) { }
+        _lblStatus.Text = _settings.Cao.Eingerichtet ? "CAO-Datenbank eingerichtet." : "CAO-Abgleich aus.";
+    }
 
     private void LoadSettings()
     {

@@ -29,16 +29,20 @@ internal sealed class SollstellungPanel : UserControl
     private readonly Button _btnDebitor = new() { Text = "Debitor anlegen ...", AutoSize = true };
     private readonly Button _btnPersonen = new() { Text = "Personenkonten ...", AutoSize = true };
     private readonly Button _btnFreigeben = new() { Text = "Monat freigeben ...", AutoSize = true };
+    private readonly Button _btnCao = new() { Text = "CAO-Datenbank ...", AutoSize = true };
+    private readonly Action<IWin32Window>? _caoEinstellungen;
     private readonly Button _btnExport = new() { Text = "Sollstellung exportieren ...", AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
     private readonly Label _lblInfo = new() { AutoSize = true, Margin = new Padding(12, 8, 3, 3), ForeColor = Color.DimGray };
     private readonly DataGridView _grid = new();
 
-    public SollstellungPanel(BuchhaltungService service, Func<string> invoiceFolder, Func<string> outputFolder, Action<string> status)
+    public SollstellungPanel(BuchhaltungService service, Func<string> invoiceFolder, Func<string> outputFolder, Action<string> status,
+                             Action<IWin32Window>? caoEinstellungen = null)
     {
         _service = service;
         _invoiceFolder = invoiceFolder;
         _outputFolder = outputFolder;
         _status = status;
+        _caoEinstellungen = caoEinstellungen;
         Dock = DockStyle.Fill;
 
         var last = DateTime.Today.AddMonths(-1);
@@ -46,7 +50,8 @@ internal sealed class SollstellungPanel : UserControl
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
         top.Controls.Add(new Label { Text = "Monat:", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
-        top.Controls.AddRange(new Control[] { _dtMonat, _btnLaden, _btnDebitor, _btnPersonen, _btnFreigeben, _btnExport, _lblInfo });
+        top.Controls.AddRange(new Control[] { _dtMonat, _btnLaden, _btnCao, _btnDebitor, _btnPersonen, _btnFreigeben, _btnExport, _lblInfo });
+        _btnCao.Visible = _caoEinstellungen is not null;
         _btnExport.Margin = new Padding(24, 3, 3, 3);
 
         var help = new Label
@@ -97,6 +102,11 @@ internal sealed class SollstellungPanel : UserControl
         Controls.Add(top);
 
         _btnLaden.Click += async (_, _) => await OnLadenAsync();
+        _btnCao.Click += async (_, _) =>
+        {
+            _caoEinstellungen?.Invoke(this);
+            if (_index is not null) await OnLadenAsync(); // mit den neuen Zugangsdaten neu abgleichen
+        };
         _dtMonat.ValueChanged += (_, _) => { if (_index is not null) Vorbereiten(); };
         _btnDebitor.Click += (_, _) => OnDebitorNeu();
         _btnPersonen.Click += (_, _) => OnPersonen();
