@@ -1,7 +1,13 @@
 namespace SonOG.Buchhaltung.Core.Invoices;
 
-/// <summary>Eine Rechnung aus der CAO-Faktura-Tabelle JOURNAL (VRENUM, KUN_NUM, KUN_NAME1, BSUMME, RDATUM).</summary>
-public sealed record CaoRechnung(string Nummer, string Kundennummer, string Name, decimal? Brutto, DateOnly? Datum);
+/// <summary>Eine Rechnung aus der CAO-Faktura-Tabelle JOURNAL (VRENUM, KUN_NUM, KUN_NAME1, BSUMME, RDATUM, Anschrift).</summary>
+public sealed record CaoRechnung(string Nummer, string Kundennummer, string Name, decimal? Brutto, DateOnly? Datum)
+{
+    public string Name2 { get; init; } = "";
+    public string Strasse { get; init; } = "";
+    public string Plz { get; init; } = "";
+    public string Ort { get; init; } = "";
+}
 
 /// <summary>Ergänzt die aus den PDFs gelesenen Rechnungen um die Angaben aus CAO (Kunde, Betrag, Datum).</summary>
 public static class CaoAbgleich
@@ -27,6 +33,7 @@ public static class CaoAbgleich
             GrossAmount = c.Brutto ?? r.GrossAmount,
             Date = c.Datum ?? r.Date,
             AusCao = true,
+            CaoKunde = c,
         };
     }
 

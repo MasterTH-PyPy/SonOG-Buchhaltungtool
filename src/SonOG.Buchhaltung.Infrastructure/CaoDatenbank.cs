@@ -51,6 +51,8 @@ public sealed class CaoVerbindung
 /// <summary>Liest Rechnungen aus der CAO-Tabelle JOURNAL: Rechnungsnummer → Kunde (KUN_NUM, KUN_NAME1), Brutto, Datum.</summary>
 public static class CaoDatenbank
 {
+    private static bool _mitAnschrift = true;
+
     /// <summary>Prüft die Verbindung und liefert die Anzahl der Rechnungen im Journal.</summary>
     public static long Testen(CaoVerbindung v)
     {
@@ -78,14 +80,33 @@ public static class CaoDatenbank
                 namen.Add("@n" + i);
                 cmd.Parameters.AddWithValue("@n" + i, block[i]);
             }
-            cmd.CommandText = "SELECT VRENUM, KUN_NUM, KUN_NAME1, BSUMME, RDATUM, QUELLE FROM JOURNAL " +
-                              $"WHERE VRENUM IN ({string.Join(",", namen)}) ORDER BY (QUELLE = 3) DESC";
-            using var rd = cmd.ExecuteReader();
-            while (rd.Read())
+            // Anschrift (KUN_NAME2, KUN_STRASSE, KUN_PLZ, KUN_ORT) für neue Debitoren; ältere CAO-Versionen ohne diese Spalten: ohne
+            const string basis = "SELECT VRENUM, KUN_NUM, KUN_NAME1, BSUMME, RDATUM, QUELLE";
+            var wo = $" FROM JOURNAL WHERE VRENUM IN ({string.Join(",", namen)}) ORDER BY (QUELLE = 3) DESC";
+            bool mitAnschrift = _mitAnschrift;
+            cmd.CommandText = (mitAnschrift ? basis + ", KUN_NAME2, KUN_STRASSE, KUN_PLZ, KUN_ORT" : basis) + wo;
+            MySqlDataReader rd;
+            try { rd = cmd.ExecuteReader(); }
+            catch (MySqlException ex) when (mitAnschrift && ex.ErrorCode == MySqlErrorCode.BadFieldError)
             {
-                var nr = Text(rd, 0);
-                if (nr.Length == 0 || result.ContainsKey(nr)) continue; // erste Zeile (Verkaufsrechnung) gewinnt
-                result[nr] = new CaoRechnung(nr, Text(rd, 1), Text(rd, 2), Betrag(rd, 3), Datum(rd, 4));
+                _mitAnschrift = mitAnschrift = false;
+                cmd.CommandText = basis + wo;
+                rd = cmd.ExecuteReader();
+            }
+            using (rd)
+            {
+                while (rd.Read())
+                {
+                    var nr = Text(rd, 0);
+                    if (nr.Length == 0 || result.ContainsKey(nr)) continue; // erste Zeile (Verkaufsrechnung) gewinnt
+                    result[nr] = new CaoRechnung(nr, Text(rd, 1), Text(rd, 2), Betrag(rd, 3), Datum(rd, 4))
+                    {
+                        Name2 = mitAnschrift ? Text(rd, 6) : "",
+                        Strasse = mitAnschrift ? Text(rd, 7) : "",
+                        Plz = mitAnschrift ? Text(rd, 8) : "",
+                        Ort = mitAnschrift ? Text(rd, 9) : "",
+                    };
+                }
             }
         }
         return result;

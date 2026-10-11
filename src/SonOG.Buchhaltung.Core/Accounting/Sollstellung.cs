@@ -67,7 +67,9 @@ public static class Sollstellung
     {
         // Kundennummer auf der Rechnung = Debitorenkonto (Taxpool KdNr); der Empfängername ist nur Rückfall für alte Rechnungen
         var perKdNr = int.TryParse(r.Kundennummer, out var kdnr) ? dir.Konten.FirstOrDefault(k => k.Konto == kdnr && k.Art == PersonenArt.Debitor) : null;
-        var debitor = perKdNr ?? dir.FindDebitor(r.RecipientFirstLine, r.Recipient);
+        // Kundennummer im Debitorenbereich, aber noch nicht angelegt (neuer Kunde): nicht über den Namen raten
+        bool neuerKunde = perKdNr is null && kdnr >= s.DebitorenVon && kdnr <= s.DebitorenBis;
+        var debitor = perKdNr ?? (neuerKunde ? null : dir.FindDebitor(r.RecipientFirstLine, r.Recipient));
         var name = debitor?.Name is { Length: > 0 } n ? n : r.RecipientFirstLine;
         int erloes = debitor is { StandardSachkonto: > 0 } ? debitor.StandardSachkonto : s.SollstellungErloeskonto;
         string bu = debitor is { StandardSachkonto: > 0 } ? debitor.StandardBuSchluessel : s.SollstellungBuSchluessel;
@@ -85,7 +87,8 @@ public static class Sollstellung
             RechnungEinbuchen = true,
             Quelle = debitor is null ? KontierungsQuelle.Offen : KontierungsQuelle.Abgleich,
             Hinweis = debitor is null
-                ? (r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor" : "Debitor fehlt")
+                ? (neuerKunde ? $"Debitor {r.Kundennummer} noch nicht angelegt (neuer Kunde)"
+                   : r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor" : "Debitor fehlt")
                 : perKdNr is not null ? ""
                 : r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor - Debitor über den Namen gefunden, bitte prüfen"
                 : "Keine Kundennummer auf der Rechnung - Debitor über den Namen gefunden, bitte prüfen",
@@ -103,6 +106,31 @@ public static class Sollstellung
             },
         };
     }
+
+    /// <summary>
+    /// Kunden aus CAO, deren Kundennummer im Debitorenbereich liegt, die es als Personenkonto aber noch nicht gibt
+    /// (z. B. neuer Kunde, in Taxpool noch nicht angelegt). Je Kundennummer die Angaben der ersten Rechnung.
+    /// </summary>
+    public static List<CaoRechnung> FehlendeDebitoren(IEnumerable<SollstellungsPosten> posten, AccountingSettings s, PersonAccountDirectory dir) =>
+        posten.Where(p => p.BereitsGestellt.Length == 0 && p.Rechnung.CaoKunde is not null)
+            .Select(p => p.Rechnung.CaoKunde!)
+            .Where(c => int.TryParse(c.Kundennummer, out var k) && k >= s.DebitorenVon && k <= s.DebitorenBis && dir.Get(k) is null)
+            .GroupBy(c => c.Kundennummer).Select(g => g.First())
+            .OrderBy(c => c.Kundennummer, StringComparer.Ordinal).ToList();
+
+    /// <summary>Legt den Debitor mit der CAO-Kundennummer und Anschrift an; er wird mit dem nächsten Export für Taxpool vorbereitet.</summary>
+    public static PersonAccount DebitorAusCao(CaoRechnung c, PersonAccountDirectory dir)
+    {
+        var p = dir.Upsert(int.Parse(c.Kundennummer, System.Globalization.CultureInfo.InvariantCulture), c.Name, PersonenArt.Debitor);
+        p.NeuFuerTaxpool = true;
+        p.Name2 = Leer(c.Name2);
+        p.Strasse = Leer(c.Strasse);
+        p.Plz = Leer(c.Plz);
+        p.Ort = Leer(c.Ort);
+        return p;
+    }
+
+    private static string? Leer(string s) => s.Trim().Length == 0 ? null : s.Trim();
 
     /// <summary>Rechnungen ohne lesbares Datum (können keinem Monat zugeordnet werden).</summary>
     public static List<InvoiceRecord> OhneDatum(IEnumerable<InvoiceRecord> rechnungen) => rechnungen.Where(r => r.Date is null).ToList();

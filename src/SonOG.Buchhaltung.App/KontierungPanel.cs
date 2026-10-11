@@ -938,6 +938,7 @@ internal sealed class KontierungPanel : UserControl
             var msg = $"Fertig: {r.Buchungssaetze} Buchungssätze aus {r.Belege} Kontoauszugsbuchungen.\n\n" +
                       $"Importdatei: {Path.GetFileName(r.Datei)}\n" +
                       (r.PersonenkontenDatei is null ? "" : $"Verwendete Personenkonten: {Path.GetFileName(r.PersonenkontenDatei)}\n") +
+                      (r.StammdatenDatei is null ? "" : $"Neue Personenkonten (zuerst in Taxpool importieren): {Path.GetFileName(r.StammdatenDatei)}\n") +
                       "\nIn Taxpool über den Import im DATEV-Format (Buchungsstapel) einlesen. Die Buchungen sind nicht festgeschrieben " +
                       "und lassen sich dort noch prüfen." +
                       (hinweise.Count > 0 ? "\n\nHinweise:\n" + string.Join("\n", hinweise.Take(10).Select(h => "• " + h.Nummer + ": " + h.Text)) : "") +

@@ -41,6 +41,19 @@ public sealed class PersonAccount
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public int Nutzung { get; set; }
 
+    /// <summary>Im Tool angelegt (z. B. aus CAO) und in Taxpool noch nicht vorhanden: Stammdaten gehen mit dem nächsten Export mit.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool NeuFuerTaxpool { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name2 { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Strasse { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Plz { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Ort { get; set; }
+
     public override string ToString() => $"{Konto} {Name}";
 }
 

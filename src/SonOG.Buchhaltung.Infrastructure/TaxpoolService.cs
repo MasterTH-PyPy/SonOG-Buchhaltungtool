@@ -9,6 +9,9 @@ public sealed class TaxpoolExportErgebnis
 {
     public string Datei { get; set; } = "";
     public string? PersonenkontenDatei { get; set; }
+    /// <summary>DATEV-Stammdaten der Personenkonten, die in Taxpool noch angelegt werden müssen (vor der Buchungsdatei importieren).</summary>
+    public string? StammdatenDatei { get; set; }
+    public int NeuePersonenkonten { get; set; }
     public int Buchungssaetze { get; set; }
     public int Belege { get; set; }
     public List<Pruefung> Hinweise { get; } = new();
@@ -106,6 +109,14 @@ public sealed class TaxpoolService
         if (i >= 0) Settings.Regeln[i] = regel;
         else Settings.Regeln.Insert(0, regel); // neue Regeln zuerst, damit sie vor allgemeinen greifen
         SaveSettings();
+    }
+
+    /// <summary>Legt Debitoren mit Kundennummer und Anschrift aus CAO an (für Taxpool vorbereitet, Stammdaten gehen mit dem Export mit).</summary>
+    public List<PersonAccount> DebitorenAusCaoAnlegen(IEnumerable<CaoRechnung> kunden)
+    {
+        var list = kunden.Select(c => Sollstellung.DebitorAusCao(c, Personen)).ToList();
+        SavePersonen();
+        return list;
     }
 
     public PersonAccount PersonenkontoAnlegen(string name, PersonenArt art, string suchbegriff = "")
@@ -368,14 +379,28 @@ public sealed class TaxpoolService
         if (used.Count > 0)
         {
             result.PersonenkontenDatei = Path.Combine(outputFolder, "Personenkonten_" + name + ".csv");
-            var sb = new StringBuilder("Konto;Name;Art\r\n");
+            var sb = new StringBuilder("Konto;Name;Art;Neu;Strasse;PLZ;Ort\r\n");
+            static string C(string? s) => (s ?? "").Replace(";", ",");
             foreach (var k in used)
             {
                 var p = Personen.Get(k);
                 var art = p?.Art.ToString() ?? (k >= Settings.DebitorenVon && k <= Settings.DebitorenBis ? "Debitor" : "Kreditor");
-                sb.Append(k).Append(';').Append((p?.Name ?? "").Replace(";", ",")).Append(';').Append(art).Append("\r\n");
+                sb.Append(k).Append(';').Append(C(p?.Name)).Append(';').Append(art).Append(';').Append(p?.NeuFuerTaxpool == true ? "ja" : "")
+                  .Append(';').Append(C(p?.Strasse)).Append(';').Append(C(p?.Plz)).Append(';').Append(C(p?.Ort)).Append("\r\n");
             }
             File.WriteAllText(result.PersonenkontenDatei, sb.ToString(), DatevBuchungsstapel.Ansi);
+
+            // In Taxpool noch nicht vorhandene Konten (z. B. neue Kunden aus CAO) als DATEV-Stammdaten
+            var neu = used.Select(Personen.Get).Where(p => p is { NeuFuerTaxpool: true }).Select(p => p!).ToList();
+            if (neu.Count > 0)
+            {
+                result.StammdatenDatei = Path.Combine(outputFolder, DatevPersonenkonten.Dateiname(name));
+                File.WriteAllText(result.StammdatenDatei, DatevPersonenkonten.Erzeugen(kopf, neu), DatevBuchungsstapel.Ansi);
+                result.NeuePersonenkonten = neu.Count;
+                result.Hinweise.Add(new Pruefung(PruefStufe.Hinweis, "Personenkonten",
+                    $"{neu.Count} neue(s) Personenkonto/-konten ({string.Join(", ", neu.Select(p => p.Konto))}) - zuerst " +
+                    $"{Path.GetFileName(result.StammdatenDatei)} in Taxpool importieren (Stammdaten Debitoren/Kreditoren), dann die Buchungen."));
+            }
         }
         return result;
     }

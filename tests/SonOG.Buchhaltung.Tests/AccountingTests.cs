@@ -301,6 +301,32 @@ public class AccountingTests
     }
 
     [Fact]
+    public void New_customer_from_cao_is_offered_and_exported_as_master_data()
+    {
+        var s = Settings();
+        var dir = Dir();
+        var c = new CaoRechnung("202634030", "15379", "Neukunde GmbH", 238m, new DateOnly(2026, 9, 10)) { Strasse = "Hauptstr. 5", Plz = "64319", Ort = "Pfungstadt" };
+        // Namensähnlichkeit zu einem bestehenden Debitor darf nicht greifen, wenn die Kundennummer neu ist
+        var inv = CaoAbgleich.Anwenden(new InvoiceRecord("202634030", "n.pdf", 238m, "Beispiel Bau", new DateOnly(2026, 9, 10)), c);
+        var posten = new List<SollstellungsPosten> { new(inv, Sollstellung.KontierungFuer(inv, s, dir)) };
+        Assert.Null(posten[0].Kontierung.Personenkonto);
+        Assert.Contains("15379", posten[0].Kontierung.Hinweis);
+
+        var fehlend = Assert.Single(Sollstellung.FehlendeDebitoren(posten, s, dir));
+        var p = Sollstellung.DebitorAusCao(fehlend, dir);
+        Assert.Equal((15379, "Neukunde GmbH", "64319", true), (p.Konto, p.Name, p.Plz, p.NeuFuerTaxpool));
+        Assert.Empty(Sollstellung.FehlendeDebitoren(posten, s, dir));
+        Assert.Equal(15379, Sollstellung.KontierungFuer(inv, s, dir).Personenkonto);
+
+        var datei = DatevPersonenkonten.Erzeugen(new DatevKopf { WirtschaftsjahrBeginn = new DateOnly(2026, 1, 1) }, new[] { p }).Split("\r\n");
+        Assert.StartsWith("\"EXTF\";700;16;\"Debitoren/Kreditoren\";5;", datei[0]);
+        Assert.StartsWith("Konto;Name (Adressattyp Unternehmen);", datei[1]);
+        Assert.StartsWith("15379;\"Neukunde GmbH\";", datei[2]);
+        Assert.Contains("\"Hauptstr. 5\";\"\";\"64319\";\"Pfungstadt\"", datei[2]);
+        Assert.Equal(DatevPersonenkonten.Spalten.Length, datei[2].Split(';').Length);
+    }
+
+    [Fact]
     public void Next_ek_number_respects_taxpool_and_manual_setting()
     {
         var s = Settings();

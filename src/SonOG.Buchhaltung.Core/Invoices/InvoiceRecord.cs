@@ -7,6 +7,9 @@ public sealed record InvoiceRecord(string Number, string FilePath, decimal? Gros
     /// <summary>Kunde, Betrag und Datum stammen aus der CAO-Datenbank (nicht nur aus dem PDF gelesen).</summary>
     public bool AusCao { get; init; }
 
+    /// <summary>Kundendaten aus dem CAO-Journal (für einen Debitor, den es in Taxpool noch nicht gibt).</summary>
+    public CaoRechnung? CaoKunde { get; init; }
+
     /// <summary>Erste nicht leere Zeile des Empfängerblocks (meist der Name).</summary>
     public string RecipientFirstLine =>
         Recipient.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";

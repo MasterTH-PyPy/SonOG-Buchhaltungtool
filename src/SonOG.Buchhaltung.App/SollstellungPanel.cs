@@ -107,7 +107,7 @@ internal sealed class SollstellungPanel : UserControl
             _caoEinstellungen?.Invoke(this);
             if (_index is not null) await OnLadenAsync(); // mit den neuen Zugangsdaten neu abgleichen
         };
-        _dtMonat.ValueChanged += (_, _) => { if (_index is not null) Vorbereiten(); };
+        _dtMonat.ValueChanged += (_, _) => { if (_index is not null) { Vorbereiten(); NeueDebitorenAnbieten(); } };
         _btnDebitor.Click += (_, _) => OnDebitorNeu();
         _btnPersonen.Click += (_, _) => OnPersonen();
         _btnFreigeben.Click += (_, _) => OnFreigeben();
@@ -134,6 +134,7 @@ internal sealed class SollstellungPanel : UserControl
             _index = await Task.Run(() => _service.ScanInvoices(folder, progress));
             Vorbereiten();
             if (_service.LetzterCaoHinweis.Length > 0) _status(_service.LetzterCaoHinweis);
+            NeueDebitorenAnbieten();
         }
         catch (Exception ex)
         {
@@ -256,6 +257,28 @@ internal sealed class SollstellungPanel : UserControl
         _btnFreigeben.Enabled = _index is not null;
     }
 
+    /// <summary>
+    /// Kundennummern aus CAO, die es als Debitor noch nicht gibt: anbieten, sie mit Name und Anschrift aus CAO anzulegen.
+    /// Beim Export der Sollstellung gehen sie als DATEV-Stammdaten für Taxpool mit.
+    /// </summary>
+    private void NeueDebitorenAnbieten()
+    {
+        var fehlend = Sollstellung.FehlendeDebitoren(_posten, Tp.Settings, Tp.Personen);
+        if (fehlend.Count == 0) return;
+        var liste = string.Join("\n", fehlend.Take(15).Select(c =>
+            $"• {c.Kundennummer}  {c.Name}" + (c.Ort.Length > 0 ? $"  ({(c.Plz + " " + c.Ort).Trim()})" : "")));
+        if (fehlend.Count > 15) liste += $"\n... und {fehlend.Count - 15} weitere";
+        var q = $"{fehlend.Count} Kunde(n) aus der CAO-Datenbank gibt es noch nicht als Debitor:\n\n{liste}\n\n" +
+                "Jetzt mit Kundennummer, Name und Anschrift aus CAO anlegen?\n" +
+                "Beim Export der Sollstellung wird dafür zusätzlich eine Stammdaten-Datei für Taxpool erzeugt.";
+        if (MessageBox.Show(this, q, "Neue Debitoren aus CAO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        var neu = Tp.DebitorenAusCaoAnlegen(fehlend);
+        foreach (var p in _posten.Where(p => p.BereitsGestellt.Length == 0 && p.Kontierung.Personenkonto is null))
+            p.Kontierung = Sollstellung.KontierungFuer(p.Rechnung, Tp.Settings, Tp.Personen);
+        Fill();
+        _status($"{neu.Count} Debitor(en) aus CAO angelegt: {string.Join(", ", neu.Select(p => p.Konto))} - werden mit dem Export für Taxpool vorbereitet.");
+    }
+
     private SollstellungsPosten? Current => _grid.CurrentRow?.Tag as SollstellungsPosten;
 
     private void OnDebitorNeu()
@@ -320,6 +343,8 @@ internal sealed class SollstellungPanel : UserControl
             var hinweise = r.Hinweise.Where(h => h.Stufe == PruefStufe.Hinweis).ToList();
             var msg = $"Fertig: {r.Buchungssaetze} Buchungssätze.\n\nImportdatei: {Path.GetFileName(r.Datei)}\n" +
                       (r.PersonenkontenDatei is null ? "" : $"Verwendete Debitoren: {Path.GetFileName(r.PersonenkontenDatei)}\n") +
+                      (r.StammdatenDatei is null ? "" : $"\nNeue Debitoren für Taxpool: {Path.GetFileName(r.StammdatenDatei)}\n" +
+                                                        "→ in Taxpool ZUERST diese Stammdaten importieren, dann die Sollstellung.\n") +
                       (hinweise.Count > 0 ? "\nHinweise:\n" + string.Join("\n", hinweise.Take(10).Select(h => "• " + h.Nummer + ": " + h.Text)) + "\n" : "") +
                       "\nAusgabeordner öffnen?";
             _status($"Sollstellung erzeugt: {Path.GetFileName(r.Datei)}");
