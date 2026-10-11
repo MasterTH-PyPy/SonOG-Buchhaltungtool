@@ -13,9 +13,16 @@ WinForms-Werkzeug (.NET 8) für die Firmenbuchhaltung:
    (Entgeltabrechnung) bekommen die Nummer der Entgelt-Buchung und werden direkt hinter deren Seite einsortiert. Der Button **Drucken (rückwärts) – Vorschau** exportiert und öffnet das PDF
    im Standard-PDF-Programm; dort siehst du genau, was gedruckt würde, und druckst mit Strg+P.
 5. **Excel-Liste** mit Status je Buchung, offene Rechnungen (für Mahnungen) und Zusammenfassung.
-6. **Kontieren** (Reiter 2) – je Buchung Personenkonto, Sachkonto(en), BU-Schlüssel, Splitbuchungen; Vorschläge aus Regeln.
-7. **Taxpool-Importdatei** – DATEV-Buchungsstapel (`EXTF_….csv`), den Taxpool-Buchhalter einliest.
-8. **Sollstellung** (eigener Reiter) – Ausgangsrechnungen eines Monats als Forderung auf die Debitoren.
+
+Danach in eigenen Reitern:
+
+| Reiter | Inhalt |
+|---|---|
+| **1 · Zuordnen und Drucken** | Punkte 1–5 oben |
+| **2 · Sollstellung Ausgangsrechnungen** | Ausgangsrechnungen eines Monats als Forderung auf die Debitoren (Debitor an Erlös), Kunde aus der CAO-Datenbank |
+| **3 · Kontieren → 4 · Taxpool** | je Bankbuchung Personenkonto, Sachkonto(en), BU-Schlüssel, Splitbuchungen; Vorschläge aus Taxpool-Vorlagen und Regeln; DATEV-Importdatei für Taxpool-Buchhalter |
+
+Die Sollstellung kommt vor dem Kontieren: erst stehen die Forderungen auf den Kundenkonten, dann gleicht der Kontoauszug sie aus.
 
 Beleglose Buchungen (Steuern, Bankentgelte, Privates …) bekommen ebenfalls eine Nummer, werden mit `BL` markiert und
 verlangen keinen Beleg.
@@ -25,7 +32,7 @@ verlangen keinen Beleg.
 | Projekt | Inhalt |
 |---|---|
 | `SonOG.Buchhaltung.Core` | Logik ohne Fremdpakete: Parser, Klassifizierung, Nummernvergabe, Abgleich, Namensvergleich |
-| `SonOG.Buchhaltung.Infrastructure` | PDF lesen (PdfPig), stempeln/zusammenfügen (PDFsharp), Excel (ClosedXML), Ordner-Scan, `BuchhaltungService` |
+| `SonOG.Buchhaltung.Infrastructure` | PDF lesen (PdfPig), stempeln/zusammenfügen (PDFsharp), Excel (ClosedXML), Mail (MailKit), CAO-Datenbank (MySqlConnector), Ordner-Scan, `BuchhaltungService`, `TaxpoolService` |
 | `SonOG.Buchhaltung.App` | WinForms-Oberfläche |
 | `SonOG.Buchhaltung.Tests` | xUnit-Tests für Core (synthetische Daten, keine echten Kunden) |
 
@@ -63,9 +70,38 @@ zurückgenommen wurden. Dort steht auch, welche Rechnungen schon bezahlt sind (D
 > **Signatur:** Der Sparkassen-Auszug ist qualifiziert signiert. Die gestempelte Kopie ist es nicht mehr –
 > das unveränderte Original separat archivieren.
 
-## Schritt 2: Kontieren
+## Schritt 2: Sollstellung der Ausgangsrechnungen
 
-Nach dem Einlesen (Schritt 1) steht jede Buchung im Reiter **2 · Kontieren** mit einem Vorschlag. Gelb = Vorschlag,
+Eigener Reiter, unabhängig vom Kontoauszug: Monat wählen, **Rechnungen laden** (CAO-Ordner aus Schritt 1). Jede Rechnung
+des Monats wird Debitor an Erlöskonto mit Rechnungsdatum und Rechnungsnummer (Belegfeld 1) gebucht. Erlöskonto, BU und
+Buchungstext („… Re-Nr.: 202634001“) kommen aus der Taxpool-Vorlage des Kunden, sonst aus seinem üblichen Gegenkonto,
+sonst Standard 8400.
+
+**Debitor = Kundennummer:** Die Kundennummer kommt aus der CAO-Datenbank (oder aus dem Rechnungskopf, „Kunden-Nr.: …“).
+CAO führt sie als `KD-05379`, Taxpool als Debitor `15379`: das Tool nimmt die Ziffern und addiert, wenn sie nicht im
+Debitorenbereich liegen, `kundennummerVersatz` (Standard 10000). Die Spalte „Kd-Nr.“ zeigt die Umrechnung
+(`KD-05379 → 15379`). Nur Rechnungen ganz ohne Kundennummer werden über den Empfängernamen zugeordnet (Hinweis „bitte prüfen“).
+
+**Neue Kunden:** Gibt es den Debitor in Taxpool noch nicht, steht er oben in einer roten Liste (Konto, Name, Anschrift aus CAO,
+Rechnungen) – die Rechnung bleibt so lange rot und wird nicht exportiert. Konto und Vorlage in Taxpool von Hand anlegen, dann
+**Angelegt – aus Taxpool neu lesen**: das Tool liest Personenkonten und Vorlagen neu und schlägt die Rechnungen neu vor
+(dafür muss die gemerkte Taxpool-Datei neuer sein, z. B. eine neue Datensicherung).
+
+**Sollstellung exportieren …** schreibt `EXTF_Sollstellung_<JJJJ-MM>.csv`. Exportierte Rechnungen merkt sich
+`sollstellung.json`; sie werden grau angezeigt und nicht noch einmal übergeben (**Monat freigeben …** nimmt das zurück).
+
+### CAO-Datenbank
+
+Knopf **CAO-Datenbank …** im Reiter 2 (Server, Port, Datenbank, Benutzer, Passwort, „Verbindung testen“; Passwort
+DPAPI-verschlüsselt in `einstellungen.json`). Über die Rechnungsnummer aus dem Dateinamen liest das Tool aus der Tabelle
+`JOURNAL` Kundennummer (`KUN_NUM`), Kundenname (`KUN_NAME1`), Brutto (`BSUMME`), Rechnungsdatum (`RDATUM`) und Anschrift
+(`KUN_NAME2`, `KUN_STRASSE`, `KUN_PLZ`, `KUN_ORT`, falls vorhanden); bei mehreren Zeilen zählt die Verkaufsrechnung
+(`QUELLE = 3`). Diese Werte gehen vor dem PDF – das gilt auch für den Zahlungsabgleich in Schritt 1. Es wird nur gelesen.
+Die Infozeile zeigt „CAO: x von y gefunden“ bzw. den Verbindungsfehler; ohne Verbindung wird wie bisher aus den PDFs gelesen.
+
+## Schritt 3: Kontieren
+
+Nach dem Einlesen (Schritt 1) steht jede Buchung im Reiter **3 · Kontieren** mit einem Vorschlag. Gelb = Vorschlag,
 grün = bestätigt, rot = Fehler (z. B. Summe der Zeilen ≠ Buchungsbetrag, Sachkonto fehlt). Alles ist je Buchung änderbar und
 wird sofort gespeichert (`kontierung\<Auszug>.json`); beim erneuten Einlesen desselben Auszugs bleibt es erhalten.
 
@@ -74,8 +110,8 @@ Drei Arten zu buchen (Doppik mit Personenkonten):
 | Personenkonto | „Beleg einbuchen“ | Buchungssätze |
 |---|---|---|
 | keins | – | Bank an/gegen Sachkonto je Zeile (Bankentgelt, Finanzamt, Privat …) |
-| Kreditor/Debitor | an | je Zeile: Sachkonto an Kreditor (bzw. Debitor an Erlös), Rechnungsdatum als Belegdatum; dann Zahlung: Kreditor an Bank |
-| Debitor/Kreditor | aus | Ausgleich offener Posten: Bank an Debitor je Rechnung (Rechnungsnummer in Belegfeld 1, laufende Nummer in Belegfeld 2) |
+| Kreditor/Debitor | an | je Zeile: Sachkonto an Kreditor (bzw. Debitor an Erlös), Rechnungsdatum als Belegdatum, EK-Belegnummer; dann Zahlung: Kreditor an Bank |
+| Debitor/Kreditor | aus | Ausgleich offener Posten: Bank an Debitor je Rechnung (Forderung steht aus der Sollstellung schon auf dem Debitor) |
 
 **Sachkonto suchen:** Statt der Nummer die Bezeichnung ins Feld Sachkonto tippen (z. B. „Bürobedarf“): bei genau einem
 Treffer wird das Konto direkt eingesetzt, sonst öffnet sich die Suche. F4 oder „Konto suchen …“ öffnet sie jederzeit;
@@ -84,10 +120,30 @@ mehrere Wörter grenzen ein („kfz rep“). Gilt auch für das Erlöskonto in d
 **Splitbuchungen:** „+ Zeile (Rest)“ legt eine Zeile mit dem Restbetrag an, z. B. eine Amazon-Zahlung mit 100,00 auf 3400 und
 50,00 auf 1800. Die Summe der Zeilen muss dem Betrag im Kontoauszug entsprechen.
 
-**Vorschläge** (Reihenfolge): Kundenzahlung mit erkannten Rechnungen → Debitor, je Rechnung eine Zeile · erste passende Regel
-(Stichwort im Buchungstext, Kategorie, Richtung) · Personenkonto per Suchbegriff mit Standard-Sachkonto · sonst offen.
+**Vorschläge** (Reihenfolge):
+
+1. Kundenzahlung mit erkannten Rechnungen → Ausgleich auf dem Debitor, je Rechnung eine Zeile, Text aus der Kundenvorlage.
+2. Erste passende Regel mit Stichwort (Stichwort im Buchungstext, Kategorie, Richtung).
+3. Personenkonto aus dem Buchungstext erkannt (Suchbegriff, voller Name oder markanter Namensteil; auch die Namen der
+   Taxpool-Vorlagen zählen) – bei Abbuchungen werden Lieferanten (70xxx), bei Eingängen Kunden (15xxx) bevorzugt;
+   bei mehreren gleichnamigen Konten gewinnt das in den letzten zwei Jahren meistgenutzte, sonst kein Vorschlag:
+   - Kunde mit Zahlungseingang → OP-Ausgleich,
+   - sonst die **Taxpool-Vorlage** dieses Personenkontos (geht vor),
+   - sonst das übliche Gegenkonto aus den Taxpool-Buchungen.
+4. Sonst offen.
+
+Die Erkennung muss nicht 100 % treffen – falsche Zuordnungen am besten in Taxpool bereinigen (Vorlagen/Personenkonten
+einheitlich benennen). Nach einer manuellen Wahl bietet das Tool an, einen Suchbegriff zu merken.
 „Als Regel speichern …“ macht aus der aktuellen Kontierung eine Regel; „Vorschläge neu“ wendet neue Regeln auf alle noch
 nicht bestätigten und nicht von Hand bearbeiteten Buchungen an.
+
+**Rechnungsnummer im Buchungstext:** Bei Eingangsrechnungen wird die Rechnungsnummer an den Vorlagentext gehängt
+(nach „Re-Nr.:“, fehlt der Platzhalter, wird „ Re-Nr.: …“ ergänzt; der Text wird vorne gekürzt, nie die Nummer). Gefunden
+wird sie mit Kennwort im Verwendungszweck (`RE`, `RG`, `Rechnung`, `INV`) oder, ohne Kennwort, als Zahl in der Form, die
+das Tool je Partner aus den Taxpool-Buchungstexten gelernt hat (z. B. 9 Ziffern mit Jahr vorne; durch Leerzeichen
+getrennte Zifferngruppen werden zusammengesetzt).
+
+### Aus Taxpool lesen
 
 **Aus Taxpool lesen …** liest die **Taxpool-Datensicherung (`*.dbb`)** direkt – nur lesend, Taxpool darf dabei offen sein:
 
@@ -97,57 +153,56 @@ nicht bestätigten und nicht von Hand bearbeiteten Buchungen an.
   kommt auf den letzten Teil. Umbuchungsvorlagen ohne Bankkonto, ausgeblendete und abgelaufene Vorlagen werden übergangen.
 - **BU-Schlüssel** kommen aus der Taxpool-Steuertabelle: Steuersatz der Vorlage, sonst der des Kontos; Ausgabe →
   Vorsteuer-, Einnahme → Umsatzsteuer-Schlüssel. Automatikkonten (z. B. 3400, 8400) bekommen keinen BU.
-- **Kontenplan** (Namen, Automatikkonten, voreingestellte Steuer) und **Personenkonten** werden mit übernommen. Wer ein
-  Sachkonto von Hand einträgt, bekommt den BU-Schlüssel vorgeschlagen; die Prüfung warnt bei BU auf Automatikkonten
-  und bei fehlendem BU, wo Taxpool einen voreingestellt hat.
+- **Kontenplan** (Namen, Automatikkonten, voreingestellte Steuer), **Bankkonto** (das in den letzten zwei Jahren
+  benutzte „Bank …“-Konto, z. B. 1210) und **Personenkonten** werden mit übernommen. Konten vom Typ Aufwand/Erlös im
+  Debitorenbereich (z. B. 20000 Serverkosten) gelten nicht als Kunden.
+- Aus der **Buchungshistorie** kommen das übliche Gegenkonto je Personenkonto, die Nutzung der Konten, die Form der
+  Rechnungsnummern je Partner und der Stand der EK-Belegnummern.
 - **„Automatisch …“** hinterlegt ein Stichwort für die gewählte Vorlage; dann wird sie passenden Buchungen selbst
   vorgeschlagen. Das Stichwort bleibt beim erneuten Lesen erhalten (Zuordnung über die GUID der Vorlage, auch nach
   Umbenennen). In Taxpool gelöschte Vorlagen verschwinden, außer sie haben ein Stichwort.
-- Die Datei wird gemerkt: Ist sie neuer (z. B. nach einer neuen Datensicherung), liest das Tool die Vorlagen beim
-  nächsten Einlesen eines Auszugs automatisch neu.
+- Die Datei wird gemerkt: Ist sie neuer (z. B. nach einer neuen Datensicherung) oder das Tool neuer, liest es sie beim
+  nächsten Einlesen eines Auszugs automatisch neu; noch nicht bestätigte Vorschläge werden dann neu berechnet.
 
 Aufbau der Datensicherung: zlib-komprimierte Tabellen (`Buchungstexte.dbd` = Vorlagen, `Konten2007.dbd`,
-`Steuersaetze.dbd`, `debikrediinfo.dbd`, …) mit Inhaltsverzeichnis und Kennung `!TP_SFX!` am Ende. Neuere
-Taxpool-Versionen packen jede Tabelle zusätzlich mit gzip (Tabellenkennung 0x13, Felddefinitionen Version 3); beide
-Varianten werden gelesen, auch gemischt in einer Datei. Umbuchungsvorlagen ohne Bankkonto (z. B. die KFZ-Prozent-Regeln)
-werden übergangen, weil sie auf den Kontoauszug nicht passen. Eine einzelne
-`*.dbd`-Datei oder ein Ordner mit `*.dbd` geht auch. Ins Taxpool zurück wird nie geschrieben – Buchungen kommen nur
-über die DATEV-Importdatei.
+`Steuersaetze.dbd`, `debikrediinfo.dbd`, `Buchungen.dbd`, `Belegnummern.dbd` …) mit Inhaltsverzeichnis und Kennung
+`!TP_SFX!` am Ende. Neuere Taxpool-Versionen packen jede Tabelle zusätzlich mit gzip (Tabellenkennung 0x13,
+Felddefinitionen Version 3); beide Varianten werden gelesen, auch gemischt in einer Datei. Eine einzelne `*.dbd`-Datei oder
+ein Ordner mit `*.dbd` geht auch. Ins Taxpool zurück wird nie geschrieben – Buchungen kommen nur über die DATEV-Importdatei.
 
 Weiterhin möglich: CSV-Exporte aus Taxpool (gleicher Button), Spalten werden über die Überschrift erkannt:
 Kontenplan (Konto + Bezeichnung → Kontonamen, Personenkonten → Debitoren/Kreditoren) und Buchungsvorlagen
 (Konto + Gegenkonto + BU + Buchungstext → Vorlage, die man je Buchung anwenden oder mit Stichwort zur Regel machen kann).
 
-## Schritt 3: Importdatei für Taxpool
+## Schritt 4: Importdatei für Taxpool
 
-**3 · Taxpool-Importdatei erzeugen …** schreibt `EXTF_Kontoauszug_<Auszug>.csv` (DATEV-Buchungsstapel, Version 700/13,
+**4 · Taxpool-Importdatei erzeugen …** schreibt `EXTF_Kontoauszug_<Auszug>.csv` (DATEV-Buchungsstapel, Version 700/13,
 Windows-1252) in den Ausgabeordner, dazu `Personenkonten_….csv` mit den verwendeten Debitoren/Kreditoren. Voraussetzung:
 Die Nummern sind in Schritt 1 endgültig vergeben (Export). Bei Fehlern wird keine Datei geschrieben; ein zweiter Export
 desselben Auszugs wird gewarnt (doppelter Import). Die Buchungen werden nicht festgeschrieben.
 
-**Belegnummern in der Importdatei:** Belegfeld 1 trägt die laufende Nummer der Bankbuchung; die Einbuchung einer
-Eingangsrechnung (Sachkonto an Lieferant) bekommt eine eigene Nummer aus dem Taxpool-Kreis der Eingangsrechnungen
-(`EK-RE-DB 400`, jährlich neu). Vor jedem Export liest das Tool den aktuellen Stand aus der gemerkten Taxpool-Datei und
-zählt ab dem höheren Wert aus Taxpool und eigener Vergabe weiter; ein erneuter Export desselben Auszugs nutzt dieselben
-Nummern, solange Taxpool sie noch nicht kennt. Hinweis: die Datensicherung enthält nur, was bis zu ihrer Erstellung
-erfasst war. Belegfeld 2 bleibt leer (`belegfeld2Rechnungsnummer` in buchhaltung.json schaltet die Rechnungsnummer dort ein).
+**Belegnummern in der Importdatei:** Belegfeld 1 trägt die laufende Nummer der Bankbuchung (Zahlung, OP-Ausgleich).
+Die Einbuchung einer Eingangsrechnung (Sachkonto an Lieferant) bekommt eine eigene Nummer aus dem Taxpool-Kreis der
+Eingangsrechnungen (`EK-RE-DB 400`, jährlich neu, Jahr = Belegdatum). Belegfeld 2 bleibt leer
+(`belegfeld2Rechnungsnummer` in buchhaltung.json schaltet die Rechnungsnummer dort ein).
 
-**Rechnungsnummer im Buchungstext:** Endet der Vorlagentext auf „Re-Nr.:“, wird die Nummer angehängt – mit Kennwort
-im Verwendungszweck (`RE`, `RG`, `Rechnung`, `INV`) oder, ohne Kennwort, als Zahl in der Form, die das Tool je Partner aus
-den Taxpool-Buchungstexten gelernt hat (z. B. 9 Ziffern mit Jahr vorne).
-
-## Sollstellung der Ausgangsrechnungen
-
-Eigener Reiter, unabhängig vom Kontoauszug: Monat wählen, **Rechnungen laden** (CAO-Ordner aus Schritt 1). Jede Rechnung
-des Monats wird Debitor an Erlöskonto (Standard 8400, Automatikkonto) mit Rechnungsdatum und Rechnungsnummer gebucht.
-Debitoren werden über den Empfängernamen gefunden oder mit **Debitor anlegen …** angelegt. Exportierte Rechnungen merkt sich
-`sollstellung.json`; sie werden grau angezeigt und nicht noch einmal übergeben (**Monat freigeben …** nimmt das zurück).
+**Nächste EK-Nummer:** steht als Feld im Reiter 3 („Nächste EK-RE-DB (2026)“, daneben der Stand in Taxpool) und ist
+änderbar, z. B. wenn in Taxpool seit der letzten Datensicherung weitergebucht wurde. Vor jedem Export liest das Tool den
+aktuellen Stand aus der gemerkten Taxpool-Datei; vergeben wird ab dem höheren Wert aus Taxpool und Feld – nie unter dem
+Taxpool-Stand (sonst Doppelbelege; eine kleinere Eingabe wird rot angezeigt). Ein erneuter Export desselben Auszugs nutzt
+dieselben Nummern, solange Taxpool sie noch nicht kennt und sie nicht unter einer von Hand gesetzten Nummer liegen.
+Hinweis: die Datensicherung enthält nur, was bis zu ihrer Erstellung erfasst war.
 
 ## Einstellungen (`buchhaltung.json`, `personenkonten.json`)
 
-Standard ist SKR03: Bank 1200, Debitoren 10000–69999, Kreditoren 70000–99999, Sachkontenlänge 4, Berater 1001, Mandant 1.
-Bei SKR04 Kontenrahmen `"04"` und Bank `1800` eintragen, Regeln anpassen. Button **Einstellungen / Regeln öffnen** im Reiter 2.
-`rechnungsnummerInBelegfeld1BeiAusgleich` steuert, wo beim OP-Ausgleich die Rechnungsnummer steht.
+Standard ist SKR03: Bank 1200 (wird aus Taxpool übernommen), Debitoren 10000–69999, Kreditoren 70000–99999,
+Sachkontenlänge 4, Berater 1001, Mandant 1. Bei SKR04 Kontenrahmen `"04"` und Bank `1800` eintragen, Regeln anpassen.
+Button **Einstellungen / Regeln öffnen** im Reiter 3. Weitere Schalter:
+
+- `sollstellungErloeskonto` / `sollstellungBuSchluessel` – Erlöskonto, wenn der Kunde keine Vorlage und kein übliches Gegenkonto hat
+- `kundennummerVersatz` – Umrechnung CAO-Kundennummer → Debitor (Standard 10000: `KD-05379` → 15379)
+- `ekBelegkreis` – Belegnummernkreis der Eingangsrechnungen (aus Taxpool übernommen, Standard `EK-RE-DB`)
+- `belegfeld2Rechnungsnummer` – Rechnungsnummer zusätzlich in Belegfeld 2 (Standard aus)
 
 ## Abgleich von Kundenzahlungen
 
@@ -180,7 +235,7 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
 
 ## Versionsstand
 
-Steht im Fenstertitel und rechts in der Statusleiste, z. B. `1.0.13 (3b34c37)`. Haupt-/Nebenversion (`VersionPrefix`) und
+Steht im Fenstertitel und rechts in der Statusleiste, z. B. `1.1.27 (a1b2c3d)`. Haupt-/Nebenversion (`VersionPrefix`) und
 `BuildNummer` stehen in `Directory.Build.props`; die BuildNummer wird bei jedem Commit um 1 erhöht, die Version hängt also
 nicht davon ab, ob beim Bauen Git verfügbar ist. In Klammern steht – wenn Git verfügbar ist – der Commit; `+lokal` heißt:
 gebaut mit nicht eingecheckten Änderungen. Gilt auch für die Datei-Version der EXE.
@@ -193,11 +248,13 @@ gebaut mit nicht eingecheckten Änderungen. Gilt auch für die Datei-Version der
 
 - Skonto/Differenzen bei Kundenzahlungen: der Rest bleibt auf dem Debitor und wird in Taxpool ausgebucht (oder Zeile aufteilen).
 - Sollstellung mit mehreren Steuersätzen je Rechnung: nur ein Erlöskonto je Rechnung.
+- CAO-Datenbank: Spaltennamen der Tabelle `JOURNAL` nach dem CAO-Standardschema; noch nicht gegen die echte Datenbank getestet.
+- Ob Taxpool `EK-RE-DB 400` (mit Leerzeichen) im Belegfeld beim Import annimmt, ist noch zu prüfen.
 - Spaltennamen der Taxpool-Exporte sind über Synonyme erkannt; bei einem anderen Layout eine Beispieldatei prüfen.
 
 - Der Parser für den Sparkassen-Kontoauszug ist an einem echten Auszug (87 Buchungen, Saldo stimmt) geprüft.
-- **Das Layout der CAO-Rechnungs-PDFs wurde noch nicht gesehen.** Betrag und Empfänger werden über die Einstellungen
-  im Abschnitt `rechnung` gefunden und müssen an einer echten Rechnung kalibriert werden. Betrag nicht lesbar →
+- **CAO-Rechnungs-PDFs:** Betrag, Empfänger, Datum und Kundennummer werden über die Einstellungen im Abschnitt
+  `rechnung` gefunden; mit eingerichteter CAO-Datenbank kommen die Werte von dort. Betrag nicht lesbar →
   Status „Rechnungsbetrag nicht lesbar“, es wird nie geraten.
 - Amazon-Belege: Bestellnummer **und** Betrag müssen passen. Der Amazon-Ordner darf die Wochenexporte enthalten
   (ZIP-Dateien oder entpackte Ordner je Bestellung, auch mehrere Wochen gemischt). Rechnungen und Gutschriften
