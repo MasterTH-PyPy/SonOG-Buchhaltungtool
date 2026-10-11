@@ -15,10 +15,13 @@ internal static class Prompt
             ShowInTaskbar = false,
             ClientSize = new Size(460, 130),
         };
-        var lbl = new Label { Text = label, Left = 12, Top = 12, Width = 436, Height = 34 };
-        var box = new TextBox { Left = 12, Top = 50, Width = 436, Text = value };
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 282, Top = 88, Width = 80 };
-        var cancel = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel, Left = 368, Top = 88, Width = 80 };
+        // mehrzeilige Texte: Label und Dialog wachsen mit
+        int h = Math.Max(34, TextRenderer.MeasureText(label, form.Font, new Size(436, 0), TextFormatFlags.WordBreak).Height + 4);
+        form.ClientSize = new Size(460, 96 + h);
+        var lbl = new Label { Text = label, Left = 12, Top = 12, Width = 436, Height = h };
+        var box = new TextBox { Left = 12, Top = 16 + h, Width = 436, Text = value };
+        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 282, Top = 54 + h, Width = 80 };
+        var cancel = new Button { Text = "Abbrechen", DialogResult = DialogResult.Cancel, Left = 368, Top = 54 + h, Width = 80 };
         form.Controls.AddRange(new Control[] { lbl, box, ok, cancel });
         form.AcceptButton = ok;
         form.CancelButton = cancel;

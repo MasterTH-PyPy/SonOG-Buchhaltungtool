@@ -202,6 +202,8 @@ public static class Buchungssaetze
         if (k.Personenkonto is not { } pk) list.Add(new(PruefStufe.Fehler, nr, "Debitor fehlt"));
         else if (pk < s.DebitorenVon || pk > s.DebitorenBis) list.Add(new(PruefStufe.Fehler, nr, $"{pk} ist kein Debitorenkonto"));
         else if (dir.Get(pk) is null) list.Add(new(PruefStufe.Hinweis, nr, $"Debitor {pk} ist nicht im Verzeichnis - in Taxpool vorhanden?"));
+        if (k.Personenkonto is int d && p.Rechnung.Kundennummer.Length > 0 && p.Rechnung.Kundennummer != d.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            list.Add(new(PruefStufe.Hinweis, nr, $"Debitor {d} weicht von der Kundennummer {p.Rechnung.Kundennummer} auf der Rechnung ab"));
         foreach (var z in k.Zeilen)
         {
             if (z.Sachkonto <= 0) list.Add(new(PruefStufe.Fehler, nr, "Erlöskonto fehlt"));

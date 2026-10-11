@@ -895,9 +895,28 @@ internal sealed class KontierungPanel : UserControl
             if (MessageBox.Show(this, q, "Taxpool-Importdatei", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         }
 
+        // Erste EK-Belegnummer zeigen und anpassbar machen (Taxpool-Stand kann seit der Sicherung weitergelaufen sein)
+        string? ekErste = null;
         try
         {
-            var r = Tp.ExportKontoauszug(_session.Statement, _session.StatementKey, output, _service.NummernEndgueltig(_session));
+            var (erste, anzahl, ekHinweis) = Tp.EkVorschau(_session.Statement, _session.StatementKey);
+            if (anzahl > 0)
+            {
+                var label = $"{anzahl} Eingangsrechnung(en) bekommen fortlaufende EK-Belegnummern.\n{ekHinweis}\n\n" +
+                            "Erste Belegnummer (bei Bedarf anpassen, z. B. wenn in Taxpool inzwischen weitergebucht wurde):";
+                ekErste = Prompt.Ask(this, "EK-Belegnummer", label, erste ?? "");
+                if (ekErste is null) return;
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Taxpool-Importdatei", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            var r = Tp.ExportKontoauszug(_session.Statement, _session.StatementKey, output, _service.NummernEndgueltig(_session), ekErste);
             var hinweise = r.Hinweise.Where(h => h.Stufe == PruefStufe.Hinweis).ToList();
             var msg = $"Fertig: {r.Buchungssaetze} Buchungssätze aus {r.Belege} Kontoauszugsbuchungen.\n\n" +
                       $"Importdatei: {Path.GetFileName(r.Datei)}\n" +

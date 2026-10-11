@@ -7,7 +7,7 @@ using SonOG.Buchhaltung.Core.Util;
 
 namespace SonOG.Buchhaltung.Core.Invoices;
 
-public sealed record ParsedInvoiceContent(decimal? Gross, string Recipient, DateOnly? Date);
+public sealed record ParsedInvoiceContent(decimal? Gross, string Recipient, DateOnly? Date, string Kundennummer = "");
 
 public static class InvoiceFileName
 {
@@ -32,8 +32,17 @@ public static class InvoiceTextParser
     {
         if (pages.Count == 0) return new ParsedInvoiceContent(null, "", null);
 
-        return new ParsedInvoiceContent(ReadGross(pages, rules), ReadRecipient(pages[0], rules), ReadDate(pages[0], rules));
+        return new ParsedInvoiceContent(ReadGross(pages, rules), ReadRecipient(pages[0], rules), ReadDate(pages[0], rules), ReadKundennummer(pages[0]));
     }
+
+    private static readonly Regex KundennummerRx = new(
+        @"\b(?:Kunden|Kd)[\s.\-]*(?:nummer|nr)\b\.?\s*:?\s*(\d{3,8})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>Kundennummer aus dem Rechnungskopf ("Kunden-Nr.: 15123", "Kundennummer 15123", "Kd.-Nr. 15123").</summary>
+    public static string KundennummerAus(string text) => KundennummerRx.Match(text) is { Success: true } m ? m.Groups[1].Value : "";
+
+    private static string ReadKundennummer(PdfPageWords first) =>
+        TextLines.Group(first.Words).Select(l => KundennummerAus(l.Text)).FirstOrDefault(n => n.Length > 0) ?? "";
 
     private static decimal? ReadGross(IReadOnlyList<PdfPageWords> pages, InvoiceReadRules rules)
     {

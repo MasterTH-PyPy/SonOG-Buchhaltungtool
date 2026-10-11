@@ -251,6 +251,37 @@ public class AccountingTests
         Assert.Equal((10002, 'H', 59.5m), (r.Konto, r.SollHaben, r.Umsatz));
     }
 
+    [Fact]
+    public void Sollstellung_takes_debitor_from_customer_number_not_from_recipient()
+    {
+        var s = Settings();
+        // gelesener Empfänger falsch (eigene Absenderzeile), Kundennummer richtig
+        var inv = new InvoiceRecord("202634010", "h.pdf", 119m, "Rudolf Kasper\nMusterweg 1", new DateOnly(2026, 9, 7), "10001");
+        var k = Sollstellung.KontierungFuer(inv, s, Dir());
+        Assert.Equal(10001, k.Personenkonto);
+        Assert.Equal("Muster Hausverwaltung GmbH Re-Nr.: 202634010", k.Zeilen[0].Text);
+        var p = new SollstellungsPosten(inv, k);
+        Assert.Empty(Buchungssaetze.Pruefen(p, s, Dir()));
+
+        // von Hand auf einen anderen Debitor geändert → Hinweis
+        k.Personenkonto = 10002;
+        Assert.Contains(Buchungssaetze.Pruefen(p, s, Dir()), x => x.Stufe == PruefStufe.Hinweis && x.Text.Contains("Kundennummer 10001"));
+
+        // unbekannte Kundennummer: Rückfall auf den Namen
+        var inv2 = new InvoiceRecord("202634011", "i.pdf", 50m, "Beispiel Bau", new DateOnly(2026, 9, 8), "99999");
+        Assert.Equal(10002, Sollstellung.KontierungFuer(inv2, s, Dir()).Personenkonto);
+    }
+
+    [Theory]
+    [InlineData("Kunden-Nr.: 15123", "15123")]
+    [InlineData("Kundennummer 15123   Datum 01.09.2026", "15123")]
+    [InlineData("Kd.-Nr. 15123", "15123")]
+    [InlineData("Kd-Nr: 15123", "15123")]
+    [InlineData("Kundennr.:15123", "15123")]
+    [InlineData("Rechnungsnummer 202634001", "")]
+    public void Customer_number_is_read_from_invoice_header(string zeile, string erwartet) =>
+        Assert.Equal(erwartet, InvoiceTextParser.KundennummerAus(zeile));
+
     // ------------------------------------------------------------------ DATEV-Datei
 
     [Fact]

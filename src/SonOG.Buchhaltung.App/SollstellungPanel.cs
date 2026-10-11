@@ -78,10 +78,10 @@ internal sealed class SollstellungPanel : UserControl
         }
         C("Nr", "Rechnung", 10, true);
         C("Datum", "Datum", 9, true);
-        C("Empfaenger", "Empfänger", 22, true);
+        C("KdNr", "Kd-Nr. (Rechnung)", 9, true);
         C("Brutto", "Brutto", 9, true, right: true);
         C("Debitor", "Debitor", 9, false);
-        C("DebitorName", "Debitor-Name", 16, true);
+        C("DebitorName", "Debitor-Name", 26, true);
         C("Erloes", "Erlöskonto", 8, false);
         C("Bu", "BU", 5, false);
         C("Status", "Status", 22, true);
@@ -176,7 +176,9 @@ internal sealed class SollstellungPanel : UserControl
         row.Cells["Auswahl"].ReadOnly = gestellt;
         row.Cells["Nr"].Value = p.Rechnung.Number;
         row.Cells["Datum"].Value = p.Rechnung.Date?.ToString("dd.MM.yyyy", De) ?? "";
-        row.Cells["Empfaenger"].Value = p.Rechnung.RecipientFirstLine;
+        // Debitor kommt aus der Kundennummer; der gelesene Empfänger steht nur noch als Tooltip zur Kontrolle
+        row.Cells["KdNr"].Value = p.Rechnung.Kundennummer;
+        row.Cells["KdNr"].ToolTipText = row.Cells["Nr"].ToolTipText = "Empfänger laut Rechnung: " + p.Rechnung.RecipientFirstLine;
         row.Cells["Brutto"].Value = p.Rechnung.GrossAmount?.ToString("N2", De) ?? "?";
         row.Cells["Debitor"].Value = k.Personenkonto?.ToString(CultureInfo.InvariantCulture) ?? "";
         row.Cells["DebitorName"].Value = k.Personenkonto is int pk ? Tp.Personen.Get(pk)?.Name ?? "(nicht im Verzeichnis)" : "";

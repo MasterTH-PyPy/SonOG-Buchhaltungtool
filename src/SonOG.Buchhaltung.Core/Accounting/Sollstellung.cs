@@ -65,23 +65,30 @@ public static class Sollstellung
 
     public static Kontierung KontierungFuer(InvoiceRecord r, AccountingSettings s, PersonAccountDirectory dir)
     {
-        var debitor = dir.FindDebitor(r.RecipientFirstLine, r.Recipient);
+        // Kundennummer auf der Rechnung = Debitorenkonto (Taxpool KdNr); der Empfängername ist nur Rückfall für alte Rechnungen
+        var perKdNr = int.TryParse(r.Kundennummer, out var kdnr) ? dir.Konten.FirstOrDefault(k => k.Konto == kdnr && k.Art == PersonenArt.Debitor) : null;
+        var debitor = perKdNr ?? dir.FindDebitor(r.RecipientFirstLine, r.Recipient);
+        var name = debitor?.Name is { Length: > 0 } n ? n : r.RecipientFirstLine;
         int erloes = debitor is { StandardSachkonto: > 0 } ? debitor.StandardSachkonto : s.SollstellungErloeskonto;
         string bu = debitor is { StandardSachkonto: > 0 } ? debitor.StandardBuSchluessel : s.SollstellungBuSchluessel;
         // Vorlage des Kunden (z. B. aus Taxpool "Immobilienverwaltung Gohr Re-Nr.:" an 8400) geht vor: Erlöskonto und Text
-        var vorlage = debitor is null ? null : KontierungsVorschlag.VorlageFuer(s, debitor.Konto, Richtung.Eingang, r.RecipientFirstLine);
+        var vorlage = debitor is null ? null : KontierungsVorschlag.VorlageFuer(s, debitor.Konto, Richtung.Eingang, name);
         if (vorlage is { Sachkonto: > 0, RechnungEinbuchen: true })
         {
             erloes = vorlage.Sachkonto;
             bu = vorlage.BuSchluessel;
         }
-        var vorlagenText = debitor is null ? null : KontierungsVorschlag.KundenText(s, debitor.Konto, r.Number, r.RecipientFirstLine);
+        var vorlagenText = debitor is null ? null : KontierungsVorschlag.KundenText(s, debitor.Konto, r.Number, name);
         return new Kontierung
         {
             Personenkonto = debitor?.Konto,
             RechnungEinbuchen = true,
             Quelle = debitor is null ? KontierungsQuelle.Offen : KontierungsQuelle.Abgleich,
-            Hinweis = debitor is null ? "Debitor fehlt" : "",
+            Hinweis = debitor is null
+                ? (r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor" : "Debitor fehlt")
+                : perKdNr is not null ? ""
+                : r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor - Debitor über den Namen gefunden, bitte prüfen"
+                : "Keine Kundennummer auf der Rechnung - Debitor über den Namen gefunden, bitte prüfen",
             Zeilen =
             {
                 new KontierungsZeile
@@ -91,7 +98,7 @@ public static class Sollstellung
                     BuSchluessel = bu,
                     Rechnungsnummer = r.Number,
                     Belegdatum = r.Date,
-                    Text = vorlagenText ?? KontierungsVorschlag.Cut($"AR {r.Number} {r.RecipientFirstLine}"),
+                    Text = vorlagenText ?? KontierungsVorschlag.Cut($"{name} Re-Nr.: {r.Number}"),
                 },
             },
         };

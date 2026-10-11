@@ -1,7 +1,8 @@
 namespace SonOG.Buchhaltung.Core.Invoices;
 
 /// <summary>Eine Ausgangsrechnung aus dem Rechnungsordner.</summary>
-public sealed record InvoiceRecord(string Number, string FilePath, decimal? GrossAmount, string Recipient, DateOnly? Date)
+/// <param name="Kundennummer">Kundennummer laut Rechnungskopf - bei SonOG gleich dem Debitorenkonto in Taxpool.</param>
+public sealed record InvoiceRecord(string Number, string FilePath, decimal? GrossAmount, string Recipient, DateOnly? Date, string Kundennummer = "")
 {
     /// <summary>Erste nicht leere Zeile des Empfängerblocks (meist der Name).</summary>
     public string RecipientFirstLine =>

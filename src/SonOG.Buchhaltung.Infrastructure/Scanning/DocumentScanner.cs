@@ -30,12 +30,13 @@ public sealed class DocumentScanner
         public decimal? Gross { get; set; }
         public string Recipient { get; set; } = "";
         public string? Date { get; set; }
+        public string Kundennummer { get; set; } = "";
         /// <summary>Stand des Rechnungslesers; ältere Einträge werden neu gelesen.</summary>
         public int Version { get; set; }
     }
 
     /// <summary>Erhöhen, wenn sich das Lesen der Rechnungen ändert (z. B. Absenderzeile überspringen).</summary>
-    private const int RechnungsleserVersion = 2;
+    private const int RechnungsleserVersion = 3; // 3: Kundennummer
 
     private sealed class ReceiptCacheEntry
     {
@@ -95,6 +96,7 @@ public sealed class DocumentScanner
                         Gross = content.Gross,
                         Recipient = content.Recipient,
                         Date = content.Date?.ToString("yyyy-MM-dd"),
+                        Kundennummer = content.Kundennummer,
                         Version = RechnungsleserVersion,
                     };
                 }
@@ -106,7 +108,7 @@ public sealed class DocumentScanner
             }
             fresh[file] = entry;
             DateOnly? date = entry.Date is not null && DateOnly.TryParse(entry.Date, out var d) ? d : null;
-            records.Add(new InvoiceRecord(number, file, entry.Gross, entry.Recipient, date));
+            records.Add(new InvoiceRecord(number, file, entry.Gross, entry.Recipient, date, entry.Kundennummer));
 
             var n = Interlocked.Increment(ref done);
             if (n % 50 == 0) progress?.Report($"Rechnungen lesen: {n} / {files.Count}");
