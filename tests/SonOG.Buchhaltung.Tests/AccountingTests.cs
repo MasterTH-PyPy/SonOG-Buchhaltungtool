@@ -278,6 +278,7 @@ public class AccountingTests
     [InlineData("Kd.-Nr. 15123", "15123")]
     [InlineData("Kd-Nr: 15123", "15123")]
     [InlineData("Kundennr.:15123", "15123")]
+    [InlineData("Kunden-Nr.: KD-05379", "KD-05379")]
     [InlineData("Rechnungsnummer 202634001", "")]
     public void Customer_number_is_read_from_invoice_header(string zeile, string erwartet) =>
         Assert.Equal(erwartet, InvoiceTextParser.KundennummerAus(zeile));
@@ -305,7 +306,7 @@ public class AccountingTests
     {
         var s = Settings();
         var dir = Dir();
-        var c = new CaoRechnung("202634030", "15379", "Neukunde GmbH", 238m, new DateOnly(2026, 9, 10)) { Strasse = "Hauptstr. 5", Plz = "64319", Ort = "Pfungstadt" };
+        var c = new CaoRechnung("202634030", "KD-05379", "Neukunde GmbH", 238m, new DateOnly(2026, 9, 10)) { Strasse = "Hauptstr. 5", Plz = "64319", Ort = "Pfungstadt" };
         // Namensähnlichkeit zu einem bestehenden Debitor darf nicht greifen, wenn die Kundennummer neu ist
         var inv = CaoAbgleich.Anwenden(new InvoiceRecord("202634030", "n.pdf", 238m, "Beispiel Bau", new DateOnly(2026, 9, 10)), c);
         var posten = new List<SollstellungsPosten> { new(inv, Sollstellung.KontierungFuer(inv, s, dir)) };
@@ -316,7 +317,7 @@ public class AccountingTests
         Assert.DoesNotContain(Buchungssaetze.Pruefen(posten[0], s, dir), x => x.Stufe == PruefStufe.Fehler);
 
         var fehlend = Assert.Single(Sollstellung.FehlendeDebitoren(posten, s, dir));
-        var p = Sollstellung.DebitorAusCao(fehlend, dir);
+        var p = Sollstellung.DebitorAusCao(fehlend, s, dir);
         Assert.Equal((15379, "Neukunde GmbH", "64319", true), (p.Konto, p.Name, p.Plz, p.NeuFuerTaxpool));
         Assert.Empty(Sollstellung.FehlendeDebitoren(posten, s, dir));
         Assert.Equal(15379, Sollstellung.KontierungFuer(inv, s, dir).Personenkonto);
@@ -328,6 +329,16 @@ public class AccountingTests
         Assert.Contains("\"Hauptstr. 5\";\"\";\"64319\";\"Pfungstadt\"", datei[2]);
         Assert.Equal(DatevPersonenkonten.Spalten.Length, datei[2].Split(';').Length);
     }
+
+    [Theory]
+    [InlineData("KD-05379", 15379)]
+    [InlineData("05379", 15379)]
+    [InlineData("15379", 15379)]
+    [InlineData("KD-5", 10005)]
+    [InlineData("", null)]
+    [InlineData("KD-95379", null)]   // 105379 außerhalb des Debitorenbereichs
+    public void Cao_customer_number_maps_to_debitor_account(string kd, int? erwartet) =>
+        Assert.Equal(erwartet, Settings().DebitorZuKundennummer(kd));
 
     [Fact]
     public void Next_ek_number_respects_taxpool_and_manual_setting()

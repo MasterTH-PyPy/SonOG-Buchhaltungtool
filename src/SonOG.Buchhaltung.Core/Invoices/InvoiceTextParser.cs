@@ -36,9 +36,9 @@ public static class InvoiceTextParser
     }
 
     private static readonly Regex KundennummerRx = new(
-        @"\b(?:Kunden|Kd)[\s.\-]*(?:nummer|nr)\b\.?\s*:?\s*(\d{3,8})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        @"\b(?:Kunden|Kd)[\s.\-]*(?:nummer|nr)\b\.?\s*:?\s*((?:[A-Za-z]{1,4}[-\s]?)?\d{3,8})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    /// <summary>Kundennummer aus dem Rechnungskopf ("Kunden-Nr.: 15123", "Kundennummer 15123", "Kd.-Nr. 15123").</summary>
+    /// <summary>Kundennummer aus dem Rechnungskopf ("Kunden-Nr.: 15123", "Kunden-Nr.: KD-05123", "Kd.-Nr. 15123").</summary>
     public static string KundennummerAus(string text) => KundennummerRx.Match(text) is { Success: true } m ? m.Groups[1].Value : "";
 
     private static string ReadKundennummer(PdfPageWords first) =>

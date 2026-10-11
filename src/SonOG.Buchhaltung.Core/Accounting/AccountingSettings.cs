@@ -129,6 +129,22 @@ public sealed class AccountingSettings
     /// <summary>Zuletzt vergebene EK-Nummer je Jahr (aus Taxpool gelesen und vom Tool weitergezählt; der Kreis beginnt jährlich neu).</summary>
     public Dictionary<int, int> EkLetzteNummer { get; set; } = new();
 
+    /// <summary>
+    /// Umrechnung der CAO-Kundennummer in das Debitorenkonto: Ziffern der Kundennummer (z. B. "KD-05379" → 5379), liegt das
+    /// nicht im Debitorenbereich, wird dieser Wert addiert (5379 + 10000 = 15379).
+    /// </summary>
+    public int KundennummerVersatz { get; set; } = 10000;
+
+    /// <summary>Debitorenkonto zu einer Kundennummer aus CAO oder vom Rechnungskopf; null, wenn sie nicht in den Debitorenbereich passt.</summary>
+    public int? DebitorZuKundennummer(string? kundennummer)
+    {
+        var ziffern = new string((kundennummer ?? "").Where(char.IsAsciiDigit).ToArray());
+        if (ziffern.Length == 0 || ziffern.Length > 9 || !int.TryParse(ziffern, out var n)) return null;
+        if (n >= DebitorenVon && n <= DebitorenBis) return n;
+        var m = n + KundennummerVersatz;
+        return KundennummerVersatz != 0 && m >= DebitorenVon && m <= DebitorenBis ? m : null;
+    }
+
     /// <summary>Höchste EK-Nummer je Jahr in der Taxpool-Datei (Stand des letzten Lesens).</summary>
     public Dictionary<int, int> EkTaxpoolStand { get; set; } = new();
 

@@ -188,7 +188,9 @@ internal sealed class SollstellungPanel : UserControl
         row.Cells["Nr"].Value = p.Rechnung.Number;
         row.Cells["Datum"].Value = p.Rechnung.Date?.ToString("dd.MM.yyyy", De) ?? "";
         // Debitor kommt aus der Kundennummer; der gelesene Empfänger steht nur noch als Tooltip zur Kontrolle
-        row.Cells["KdNr"].Value = p.Rechnung.Kundennummer;
+        row.Cells["KdNr"].Value = p.Rechnung.Kundennummer.Length == 0 ? ""
+            : Tp.Settings.DebitorZuKundennummer(p.Rechnung.Kundennummer) is int deb && deb.ToString(CultureInfo.InvariantCulture) != p.Rechnung.Kundennummer
+                ? $"{p.Rechnung.Kundennummer} → {deb}" : p.Rechnung.Kundennummer;
         row.Cells["KdNr"].ToolTipText = row.Cells["Nr"].ToolTipText =
             (p.Rechnung.AusCao ? "Kunde, Betrag und Datum aus der CAO-Datenbank" : "Nicht in der CAO-Datenbank gefunden - nur aus dem PDF gelesen") +
             "\nEmpfänger: " + p.Rechnung.RecipientFirstLine;
@@ -196,7 +198,7 @@ internal sealed class SollstellungPanel : UserControl
         row.Cells["Debitor"].Value = k.Personenkonto?.ToString(CultureInfo.InvariantCulture) ?? "";
         row.Cells["DebitorName"].Value = k.Personenkonto is int pk
             ? Tp.Personen.Get(pk)?.Name
-              ?? (p.Rechnung.CaoKunde is { } ck && ck.Kundennummer.Trim() == pk.ToString(CultureInfo.InvariantCulture) ? ck.Name + "  (neu aus CAO)" : "(nicht im Verzeichnis)")
+              ?? (p.Rechnung.CaoKunde is { } ck && Tp.Settings.DebitorZuKundennummer(ck.Kundennummer) == pk ? ck.Name + "  (neu aus CAO)" : "(nicht im Verzeichnis)")
             : "";
         row.Cells["Erloes"].Value = z is { Sachkonto: > 0 } ? z.Sachkonto.ToString(CultureInfo.InvariantCulture) : "";
         row.Cells["Bu"].Value = z?.BuSchluessel ?? "";

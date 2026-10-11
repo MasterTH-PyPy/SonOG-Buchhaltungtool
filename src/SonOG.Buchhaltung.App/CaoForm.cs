@@ -52,7 +52,7 @@ internal sealed class CaoForm : Form
         var info = new Label
         {
             AutoSize = true, MaximumSize = new Size(420, 0), ForeColor = Color.DimGray, Margin = new Padding(3, 8, 3, 3),
-            Text = "Über die Rechnungsnummer aus dem Dateinamen werden Kundennummer (= Debitor), Kundenname, Brutto und " +
+            Text = "Über die Rechnungsnummer aus dem Dateinamen werden Kundennummer (KD-05379 = Debitor 15379), Kundenname, Brutto und " +
                    "Rechnungsdatum aus der Tabelle JOURNAL gelesen. Es wird nur gelesen, nichts geschrieben.",
         };
         grid.Controls.Add(info);

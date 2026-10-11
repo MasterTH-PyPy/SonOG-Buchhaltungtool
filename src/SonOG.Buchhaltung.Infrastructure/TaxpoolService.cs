@@ -114,7 +114,7 @@ public sealed class TaxpoolService
     /// <summary>Legt Debitoren mit Kundennummer und Anschrift aus CAO an (für Taxpool vorbereitet, Stammdaten gehen mit dem Export mit).</summary>
     public List<PersonAccount> DebitorenAusCaoAnlegen(IEnumerable<CaoRechnung> kunden)
     {
-        var list = kunden.Select(c => Sollstellung.DebitorAusCao(c, Personen)).ToList();
+        var list = kunden.Select(c => Sollstellung.DebitorAusCao(c, Settings, Personen)).ToList();
         SavePersonen();
         return list;
     }

@@ -66,12 +66,15 @@ public static class Sollstellung
     public static Kontierung KontierungFuer(InvoiceRecord r, AccountingSettings s, PersonAccountDirectory dir)
     {
         // Kundennummer auf der Rechnung = Debitorenkonto (Taxpool KdNr); der Empfängername ist nur Rückfall für alte Rechnungen
-        var perKdNr = int.TryParse(r.Kundennummer, out var kdnr) ? dir.Konten.FirstOrDefault(k => k.Konto == kdnr && k.Art == PersonenArt.Debitor) : null;
-        // Kundennummer im Debitorenbereich, aber noch nicht angelegt (neuer Kunde): nicht über den Namen raten
-        bool neuerKunde = perKdNr is null && kdnr >= s.DebitorenVon && kdnr <= s.DebitorenBis;
+        // ("KD-05379" in CAO = Debitor 15379 in Taxpool, siehe KundennummerVersatz)
+        var kd = s.DebitorZuKundennummer(r.Kundennummer);
+        int kdnr = kd ?? 0;
+        var perKdNr = kd is null ? null : dir.Konten.FirstOrDefault(k => k.Konto == kdnr && k.Art == PersonenArt.Debitor);
+        // Kundennummer passt in den Debitorenbereich, ist aber noch nicht angelegt (neuer Kunde): nicht über den Namen raten
+        bool neuerKunde = perKdNr is null && kd is not null;
         var debitor = perKdNr ?? (neuerKunde ? null : dir.FindDebitor(r.RecipientFirstLine, r.Recipient));
         // Neuer Kunde, der in CAO steht: Debitor = Kundennummer, wird beim Export mit den CAO-Stammdaten für Taxpool angelegt
-        bool ausCao = neuerKunde && r.CaoKunde is { } ck && ck.Kundennummer.Trim() == r.Kundennummer;
+        bool ausCao = neuerKunde && r.CaoKunde is { } ck && s.DebitorZuKundennummer(ck.Kundennummer) == kd;
         var name = debitor?.Name is { Length: > 0 } n ? n : ausCao && r.CaoKunde!.Name.Length > 0 ? r.CaoKunde.Name : r.RecipientFirstLine;
         int erloes = debitor is { StandardSachkonto: > 0 } ? debitor.StandardSachkonto : s.SollstellungErloeskonto;
         string bu = debitor is { StandardSachkonto: > 0 } ? debitor.StandardBuSchluessel : s.SollstellungBuSchluessel;
@@ -90,7 +93,7 @@ public static class Sollstellung
             Quelle = debitor is null && !ausCao ? KontierungsQuelle.Offen : KontierungsQuelle.Abgleich,
             Hinweis = ausCao ? $"Neuer Debitor {kdnr} aus CAO - wird beim Export für Taxpool angelegt"
                 : debitor is null
-                ? (neuerKunde ? $"Debitor {r.Kundennummer} noch nicht angelegt (neuer Kunde)"
+                ? (neuerKunde ? $"Debitor {kdnr} noch nicht angelegt (neuer Kunde)"
                    : r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor" : "Debitor fehlt")
                 : perKdNr is not null ? ""
                 : r.Kundennummer.Length > 0 ? $"Kundennummer {r.Kundennummer} ist kein Debitor - Debitor über den Namen gefunden, bitte prüfen"
@@ -116,16 +119,18 @@ public static class Sollstellung
     /// </summary>
     public static List<CaoRechnung> FehlendeDebitoren(IEnumerable<SollstellungsPosten> posten, AccountingSettings s, PersonAccountDirectory dir) =>
         posten.Where(p => p.BereitsGestellt.Length == 0 && p.Rechnung.CaoKunde is not null)
-            .Where(p => p.Kontierung.Personenkonto is null || p.Kontierung.Personenkonto.ToString() == p.Rechnung.CaoKunde!.Kundennummer.Trim())
+            .Where(p => p.Kontierung.Personenkonto is null || p.Kontierung.Personenkonto == s.DebitorZuKundennummer(p.Rechnung.CaoKunde!.Kundennummer))
             .Select(p => p.Rechnung.CaoKunde!)
-            .Where(c => int.TryParse(c.Kundennummer, out var k) && k >= s.DebitorenVon && k <= s.DebitorenBis && dir.Get(k) is null)
-            .GroupBy(c => c.Kundennummer).Select(g => g.First())
-            .OrderBy(c => c.Kundennummer, StringComparer.Ordinal).ToList();
+            .Where(c => s.DebitorZuKundennummer(c.Kundennummer) is int k && dir.Get(k) is null)
+            .GroupBy(c => s.DebitorZuKundennummer(c.Kundennummer)).Select(g => g.First())
+            .OrderBy(c => s.DebitorZuKundennummer(c.Kundennummer)).ToList();
 
     /// <summary>Legt den Debitor mit der CAO-Kundennummer und Anschrift an; er wird mit dem nächsten Export für Taxpool vorbereitet.</summary>
-    public static PersonAccount DebitorAusCao(CaoRechnung c, PersonAccountDirectory dir)
+    public static PersonAccount DebitorAusCao(CaoRechnung c, AccountingSettings s, PersonAccountDirectory dir)
     {
-        var p = dir.Upsert(int.Parse(c.Kundennummer, System.Globalization.CultureInfo.InvariantCulture), c.Name, PersonenArt.Debitor);
+        var konto = s.DebitorZuKundennummer(c.Kundennummer)
+                    ?? throw new InvalidOperationException($"Kundennummer {c.Kundennummer} passt nicht in den Debitorenbereich.");
+        var p = dir.Upsert(konto, c.Name, PersonenArt.Debitor);
         p.NeuFuerTaxpool = true;
         p.Name2 = Leer(c.Name2);
         p.Strasse = Leer(c.Strasse);
