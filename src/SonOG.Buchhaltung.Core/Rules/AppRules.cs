@@ -33,6 +33,12 @@ public sealed class InvoiceReadRules
         "Gesamtbetrag", "Rechnungsbetrag", "Endbetrag", "Zahlbetrag", "Gesamtsumme", "Endsumme", "Brutto", "zu zahlen",
     };
     public RegionRule Empfaenger { get; set; } = new();
+
+    /// <summary>
+    /// Zeilen im Empfängerbereich mit diesen Texten sind die eigene Absenderzeile (z. B. "Rudolf Kasper · SonOG · ...")
+    /// und werden übersprungen.
+    /// </summary>
+    public List<string> AbsenderStichwoerter { get; set; } = new() { "SonOG", "Rudolf Kasper" };
     public string DatumRegex { get; set; } = @"(\d{2}\.\d{2}\.\d{4})";
 }
 

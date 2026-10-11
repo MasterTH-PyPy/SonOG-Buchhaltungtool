@@ -61,8 +61,17 @@ public static class InvoiceTextParser
         if (lines.Count == 0)
             lines = TextLines.Group(first.Words).Take(12).Select(l => l.Text).ToList();
 
+        // Eigene Absenderzeile über der Anschrift überspringen ("Rudolf Kasper · SonOG · Musterweg 1 · 64319 Pfungstadt")
+        lines = lines.Where(l => !IstAbsenderzeile(l, rules)).ToList();
         return string.Join("\n", lines);
     }
+
+    private static readonly Regex AbsenderMuster = new(@"\s[·•|]\s.*\b\d{5}\b|\b\d{5}\b.*\s[·•|]\s", RegexOptions.Compiled);
+
+    /// <summary>Absenderzeile: enthält ein eigenes Stichwort, oder Trennzeichen (·, •, |) zusammen mit einer Postleitzahl.</summary>
+    public static bool IstAbsenderzeile(string line, InvoiceReadRules rules) =>
+        rules.AbsenderStichwoerter.Any(k => k.Trim().Length > 0 && line.Contains(k.Trim(), StringComparison.OrdinalIgnoreCase))
+        || AbsenderMuster.IsMatch(line);
 
     private static DateOnly? ReadDate(PdfPageWords first, InvoiceReadRules rules)
     {

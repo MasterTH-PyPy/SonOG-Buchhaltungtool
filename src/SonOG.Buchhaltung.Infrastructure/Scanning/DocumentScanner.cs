@@ -30,7 +30,12 @@ public sealed class DocumentScanner
         public decimal? Gross { get; set; }
         public string Recipient { get; set; } = "";
         public string? Date { get; set; }
+        /// <summary>Stand des Rechnungslesers; ältere Einträge werden neu gelesen.</summary>
+        public int Version { get; set; }
     }
+
+    /// <summary>Erhöhen, wenn sich das Lesen der Rechnungen ändert (z. B. Absenderzeile überspringen).</summary>
+    private const int RechnungsleserVersion = 2;
 
     private sealed class ReceiptCacheEntry
     {
@@ -73,7 +78,7 @@ public sealed class DocumentScanner
 
             var info = new FileInfo(file);
             InvoiceCacheEntry entry;
-            if (cache.TryGetValue(file, out var cached) && cached.Ticks == info.LastWriteTimeUtc.Ticks && cached.Size == info.Length)
+            if (cache.TryGetValue(file, out var cached) && cached.Ticks == info.LastWriteTimeUtc.Ticks && cached.Size == info.Length && cached.Version == RechnungsleserVersion)
             {
                 entry = cached;
             }
@@ -90,6 +95,7 @@ public sealed class DocumentScanner
                         Gross = content.Gross,
                         Recipient = content.Recipient,
                         Date = content.Date?.ToString("yyyy-MM-dd"),
+                        Version = RechnungsleserVersion,
                     };
                 }
                 catch (Exception ex)
@@ -131,7 +137,7 @@ public sealed class DocumentScanner
         {
             var info = new FileInfo(file);
             ReceiptCacheEntry entry;
-            if (cache.TryGetValue(file, out var cached) && cached.Ticks == info.LastWriteTimeUtc.Ticks && cached.Size == info.Length)
+            if (cache.TryGetValue(file, out var cached) && cached.Ticks == info.LastWriteTimeUtc.Ticks && cached.Size == info.Length && cached.Version == RechnungsleserVersion)
             {
                 entry = cached;
             }

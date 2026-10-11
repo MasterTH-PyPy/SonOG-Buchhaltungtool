@@ -172,6 +172,8 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
 - `belegloseTypen` – Buchungsart, z. B. `Entgeltabrechnung`
 - `eigeneRechnungsnummerRegex` – Muster der eigenen Rechnungsnummern (Standard: `20` + 7 Ziffern, Gruppe 1)
 - `nummernFormat` – z. B. `{year}-{n:0000}`
+- `rechnung.absenderStichwoerter` – Zeilen mit diesen Texten (Standard: „SonOG“, „Rudolf Kasper“) sind die eigene
+  Absenderzeile über der Anschrift und werden beim Empfänger übersprungen; ebenso Zeilen wie „Name · Straße · PLZ Ort“.
 - `rechnung` – wie Betrag, Empfänger und Datum in den Rechnungs-PDFs gefunden werden:
   `betragStichwoerter` (die unterste Zeile mit einem dieser Wörter liefert den Betrag),
   `empfaenger` (Rechteck in Punkt, links oben = 0/0, in dem die Anschrift steht), `datumRegex`.

@@ -49,6 +49,23 @@ public class InvoiceTextParserTests
         Assert.Null(InvoiceTextParser.Parse(new[] { page }, new InvoiceReadRules()).Gross);
     }
 
+    [Theory]
+    [InlineData("SonOG · Musterstraße 5 · 64319 Musterstadt")]            // eigenes Stichwort
+    [InlineData("Max Absender · Musterstraße 5 · 64319 Musterstadt")]     // Trennzeichen + PLZ
+    [InlineData("Max Absender | Musterstraße 5 | 64319 Musterstadt")]
+    public void Own_sender_line_above_address_is_skipped(string absender)
+    {
+        var page = Page(
+            (70, 128, absender),
+            (70, 140, "Erika Beispiel"),
+            (70, 152, "Musterweg 1"),
+            (70, 164, "64319 Musterstadt"),
+            (70, 630, "Gesamtbetrag EUR 10,00"));
+        var c = InvoiceTextParser.Parse(new[] { page }, new InvoiceReadRules());
+        Assert.Equal("Erika Beispiel\nMusterweg 1\n64319 Musterstadt", c.Recipient);
+        Assert.Equal("Erika Beispiel", new InvoiceRecord("1", "x", 10m, c.Recipient, null).RecipientFirstLine);
+    }
+
     [Fact]
     public void Recipient_falls_back_to_top_of_page_when_region_is_empty()
     {
