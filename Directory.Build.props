@@ -6,4 +6,39 @@
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
+
+  <!--
+    Versionsstand: Haupt- und Nebenversion (VersionPrefix) werden von Hand gesetzt, z. B. bei größeren Änderungen 1.1, 2.0.
+    Die dritte Stelle ist die Anzahl der Commits und zählt damit bei jedem Commit automatisch hoch; dazu kommt der
+    Commit-Kurzhash und "+lokal", wenn nicht eingecheckte Änderungen enthalten sind. Ohne Git bleibt es bei VersionPrefix.0.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>1.0</VersionPrefix>
+    <Version>$(VersionPrefix).0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <Target Name="SonOGGitVersion" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo;CoreCompile">
+    <Exec Command="git rev-list --count HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" EchoOff="true"
+          StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SonOGGitCount" />
+      <Output TaskParameter="ExitCode" PropertyName="SonOGGitExit" />
+    </Exec>
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" EchoOff="true"
+          StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)"
+          Condition="'$(SonOGGitExit)' == '0'">
+      <Output TaskParameter="ConsoleOutput" PropertyName="SonOGGitHash" />
+    </Exec>
+    <Exec Command="git diff --quiet HEAD --" IgnoreExitCode="true" EchoOff="true" StandardOutputImportance="low"
+          StandardErrorImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)" Condition="'$(SonOGGitExit)' == '0'">
+      <Output TaskParameter="ExitCode" PropertyName="SonOGGitDirty" />
+    </Exec>
+    <PropertyGroup Condition="'$(SonOGGitExit)' == '0'">
+      <Version>$(VersionPrefix).$(SonOGGitCount)</Version>
+      <FileVersion>$(VersionPrefix).$(SonOGGitCount).0</FileVersion>
+      <AssemblyVersion>$(VersionPrefix).$(SonOGGitCount).0</AssemblyVersion>
+      <InformationalVersion>$(VersionPrefix).$(SonOGGitCount) ($(SonOGGitHash))</InformationalVersion>
+      <InformationalVersion Condition="'$(SonOGGitDirty)' != '0'">$(VersionPrefix).$(SonOGGitCount) ($(SonOGGitHash)+lokal)</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 </Project>

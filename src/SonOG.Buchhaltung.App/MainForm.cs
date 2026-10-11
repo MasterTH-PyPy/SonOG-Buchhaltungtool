@@ -48,7 +48,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "SonOG Buchhaltung - Kontoauszug nummerieren, abgleichen und an Taxpool übergeben";
+        Text = $"SonOG Buchhaltung {AppVersion.Text} - Kontoauszug nummerieren, abgleichen und an Taxpool übergeben";
         Icon = AppIcon.Get();
         Width = 1300;
         Height = 860;
@@ -128,6 +128,7 @@ public sealed class MainForm : Form
 
         var status = new StatusStrip();
         status.Items.Add(_lblStatus);
+        status.Items.Add(new ToolStripStatusLabel("Version " + AppVersion.Text) { ForeColor = SystemColors.GrayText });
 
         _warnPanel.Controls.Add(_txtWarnings);
 

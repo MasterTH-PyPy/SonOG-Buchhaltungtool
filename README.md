@@ -161,6 +161,13 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
   `betragStichwoerter` (die unterste Zeile mit einem dieser Wörter liefert den Betrag),
   `empfaenger` (Rechteck in Punkt, links oben = 0/0, in dem die Anschrift steht), `datumRegex`.
 
+## Versionsstand
+
+Steht im Fenstertitel und rechts in der Statusleiste, z. B. `1.0.42 (3b34c37)`. Haupt- und Nebenversion stehen in
+`Directory.Build.props` (`VersionPrefix`, von Hand hochsetzen bei größeren Änderungen); die letzte Stelle ist die Anzahl
+der Commits und zählt bei jedem Commit automatisch hoch. Dahinter steht der Commit; `+lokal` heißt: gebaut mit nicht
+eingecheckten Änderungen. Gilt auch für die Datei-Version der EXE.
+
 ## Icon
 
 `tools/make_icon.py` (Pillow) erzeugt `src/SonOG.Buchhaltung.App/Resources/app.ico` in allen Windows-Größen.

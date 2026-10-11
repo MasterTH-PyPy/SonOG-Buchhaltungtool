@@ -39,3 +39,15 @@ internal static class AppIcon
         return _icon;
     }
 }
+
+/// <summary>Versionsstand der Anwendung (beim Bauen aus Git gebildet, siehe Directory.Build.props).</summary>
+internal static class AppVersion
+{
+    public static string Text { get; } =
+        typeof(AppVersion).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion
+        ?? typeof(AppVersion).Assembly.GetName().Version?.ToString(3)
+        ?? "?";
+}
