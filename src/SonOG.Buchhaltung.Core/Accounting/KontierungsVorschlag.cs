@@ -1,3 +1,4 @@
+using SonOG.Buchhaltung.Core.Matching;
 using System.Text.RegularExpressions;
 using SonOG.Buchhaltung.Core.Models;
 
@@ -79,7 +80,17 @@ public sealed class KontierungsVorschlag
             };
         }
 
-        // 3b. Lieferant (oder Kunde bei Abbuchung) mit Standard-Sachkonto: Beleg einbuchen, Zahlung ausbuchen
+        // 3b. Vorlage für dieses Personenkonto (z. B. aus Taxpool "ADN": 4964 an 70001) - geht vor dem Standardkonto
+        if (person is not null && VorlageFuer(person, b) is { } vorlage)
+        {
+            var kv = AusRegel(b, vorlage);
+            kv.Personenkonto = person.Konto;
+            kv.Hinweis = $"Vorlage \"{vorlage.Name}\" für {person} (erkannt über {personTreffer!.Grund})" +
+                         (kv.Quelle == KontierungsQuelle.Offen ? " - Sachkonto fehlt" : "");
+            return kv;
+        }
+
+        // 3c. Lieferant (oder Kunde bei Abbuchung) mit Standard-Sachkonto: Beleg einbuchen, Zahlung ausbuchen
         if (person is { StandardSachkonto: > 0 })
         {
             return new Kontierung
@@ -102,6 +113,24 @@ public sealed class KontierungsVorschlag
             Zeilen = { new KontierungsZeile { Betrag = betrag, Text = text } },
         };
     }
+
+    /// <summary>
+    /// Vorlage, die genau dieses Personenkonto bebucht und zur Richtung passt. Bei mehreren gewinnt die, deren Name
+    /// am besten zum Buchungstext passt; bei Gleichstand die kürzeste Bezeichnung (meist die allgemeine).
+    /// </summary>
+    private KontierungsRegel? VorlageFuer(PersonAccount person, Booking b)
+    {
+        var richtung = b.Amount < 0 ? Richtung.Ausgang : Richtung.Eingang;
+        return _s.Regeln
+            .Where(r => r.Personenkonto == person.Konto && (r.Richtung == Richtung.Alle || r.Richtung == richtung))
+            .Where(r => r.Sachkonto > 0 || r.Aufteilung is { Count: > 0 } || !r.RechnungEinbuchen)
+            .OrderByDescending(r => NameMatcher.Score(Ohne(r.Name), b.Text))
+            .ThenBy(r => r.Name.Length)
+            .FirstOrDefault();
+    }
+
+    private static string Ohne(string name) =>
+        name.StartsWith(TaxpoolVorlagenImport.Praefix, StringComparison.Ordinal) ? name[TaxpoolVorlagenImport.Praefix.Length..] : name;
 
     /// <summary>Wendet eine Regel oder Vorlage auf die Buchung an (auch von Hand aus der Oberfläche).</summary>
     public Kontierung AusRegel(Booking b, KontierungsRegel regel)

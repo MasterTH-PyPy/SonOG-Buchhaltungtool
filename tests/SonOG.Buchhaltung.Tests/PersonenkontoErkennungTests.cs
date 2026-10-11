@@ -87,6 +87,25 @@ public class PersonenkontoErkennungTests
     }
 
     [Fact]
+    public void Template_for_the_person_account_wins_over_standard_account()
+    {
+        var (s, dir) = Umgebung();
+        s.Regeln.Add(new KontierungsRegel
+        {
+            Name = "Taxpool: Toom Baumarkt GmbH Beleg-Nr.:", TaxpoolId = "x1", Personenkonto = 70077, Sachkonto = 3400, BuSchluessel = "",
+            Richtung = Richtung.Ausgang, RechnungEinbuchen = true,
+        });
+        var b = new Booking { Date = new DateOnly(2026, 10, 2), Amount = -16.06m, Text = "TOOM BM SAGT DANKE//DARMSTADT/DE", Number = "2026-0101", Category = BookingCategory.AusgabeSonstige };
+        var k = new KontierungsVorschlag(s, dir).Vorschlagen(b);
+        Assert.Equal((70077, true, 3400, KontierungsQuelle.Regel), (k.Personenkonto, k.RechnungEinbuchen, k.Zeilen[0].Sachkonto, k.Quelle));
+        Assert.Contains("Vorlage", k.Hinweis);
+
+        // Eingang beim selben Lieferanten (Erstattung): Vorlage gilt nur für Ausgänge → Standardkonto
+        b = new Booking { Date = new DateOnly(2026, 10, 3), Amount = 5m, Text = "TOOM BM ERSTATTUNG", Number = "2026-0102", Category = BookingCategory.EingangSonstige };
+        Assert.Equal(3030, new KontierungsVorschlag(s, dir).Vorschlagen(b).Zeilen[0].Sachkonto);
+    }
+
+    [Fact]
     public void Supplier_with_standard_account_is_booked_in_and_out()
     {
         var (s, dir) = Umgebung();
