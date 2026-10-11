@@ -513,7 +513,7 @@ internal sealed class KontierungPanel : UserControl
         Changed();
 
         // Von Hand gewählt und nicht erkannt: Suchbegriff merken anbieten, damit es beim nächsten Mal klappt
-        if (person is not null && Tp.Personen.Erkennen(b.Text, b.Amount)?.Konto.Konto != person.Konto)
+        if (person is not null && Tp.Personen.Erkennen(b.Text, b.Amount, KontierungsVorschlag.VorlagenAliase(Tp.Settings))?.Konto.Konto != person.Konto)
             BeginInvoke(new Action(() => SuchbegriffAnbieten(b, person)));
     }
 

@@ -226,3 +226,25 @@ public class RechnungsnummerFormTests
         Assert.Equal("", Rechnungsnummer.Aus(b, lieferant));                          // andere Form → nichts
     }
 }
+
+public class VorlagenErkennungTests
+{
+    [Fact]
+    public void Template_name_identifies_account_and_grouped_numbers_are_joined()
+    {
+        var s = new AccountingSettings { Regeln = new() };
+        var dir = new PersonAccountDirectory();
+        dir.Konten.Add(new PersonAccount { Konto = 70004, Name = "Fernmelde Mobil", Art = PersonenArt.Kreditor, StandardSachkonto = 4920, RechnungsnummerFormen = new() { "D14" } });
+        dir.Konten.Add(new PersonAccount { Konto = 70005, Name = "Fernmelde Festnetz", Art = PersonenArt.Kreditor });
+        dir.Konten.Add(new PersonAccount { Konto = 70006, Name = "Fernmelde Kabel", Art = PersonenArt.Kreditor });
+        dir.Konten.Add(new PersonAccount { Konto = 70067, Name = "Rundfunk Musterlandradio", Art = PersonenArt.Kreditor });
+        s.Regeln.Add(new KontierungsRegel { Name = "Taxpool: Fernmelde Musterland GmbH Re-Nr:", TaxpoolId = "t", Personenkonto = 70004, Sachkonto = 4920,
+            BuSchluessel = "9", Richtung = Richtung.Ausgang, RechnungEinbuchen = true, Buchungstext = "Fernmelde Musterland GmbH Re-Nr:" });
+
+        var b = new Booking { Date = new DateOnly(2026, 10, 1), Amount = -39.99m, Number = "2026-0005", Category = BookingCategory.AusgabeSonstige,
+            Text = "FERNMELDE MUSTERLAND GMBH RG 424021580126 61/01.10.2026" };
+        var k = new KontierungsVorschlag(s, dir).Vorschlagen(b);
+        Assert.Equal(70004, k.Personenkonto);                       // über den Vorlagennamen, nicht "Musterlandradio"
+        Assert.Equal("Fernmelde Musterland GmbH Re-Nr: 424021580126 61", k.Zeilen[0].Text);
+    }
+}

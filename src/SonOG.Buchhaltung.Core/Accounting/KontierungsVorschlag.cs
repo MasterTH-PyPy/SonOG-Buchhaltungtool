@@ -35,7 +35,7 @@ public sealed class KontierungsVorschlag
             var names = inv.Select(i => i.RecipientFirstLine).Append(b.PayerName).ToArray();
             // zuerst über den Rechnungsempfänger, sonst über den Buchungstext (Kunde bevorzugt)
             var debitor = _dir.FindDebitor(names);
-            if (debitor is null && _dir.Erkennen(b.Text + " " + string.Join(" ", names), Math.Abs(b.Amount)) is { Konto.Art: PersonenArt.Debitor } t0)
+            if (debitor is null && Erkennung.Finden(b.Text + " " + string.Join(" ", names), Math.Abs(b.Amount)) is { Konto.Art: PersonenArt.Debitor } t0)
                 debitor = t0.Konto;
             var k = new Kontierung
             {
@@ -76,7 +76,7 @@ public sealed class KontierungsVorschlag
         if (regel is not null) return AusRegel(b, regel);
 
         // 3. Personenkonto aus dem Buchungstext (Suchbegriff, Name oder markanter Namensteil; Richtung beachtet)
-        var personTreffer = _dir.Erkennen(b.Text, b.Amount);
+        var personTreffer = Erkennung.Finden(b.Text, b.Amount);
         var person = personTreffer?.Konto;
 
         // 3a. Zahlungseingang eines Kunden: Forderung steht aus der Sollstellung schon auf dem Debitor → nur ausgleichen
@@ -112,7 +112,7 @@ public sealed class KontierungsVorschlag
                 RechnungEinbuchen = true,
                 Quelle = KontierungsQuelle.Regel,
                 Hinweis = "Standardkonto von " + person + " (erkannt über " + personTreffer!.Grund + ")",
-                Zeilen = { new KontierungsZeile { Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Rechnungsnummer = Rechnungsnummer.Aus(b, person), Text = text } },
+                Zeilen = { LieferantenZeile(person, b, betrag, text) },
             };
         }
 
@@ -143,6 +143,17 @@ public sealed class KontierungsVorschlag
             .ThenBy(r => r.Name.Length)
             .FirstOrDefault();
 
+    /// <summary>Eingangsrechnung mit Standardkonto: Text "Lieferant Re-Nr.: Nummer", wenn eine Nummer zu finden ist.</summary>
+    private static KontierungsZeile LieferantenZeile(PersonAccount person, Booking b, decimal betrag, string text)
+    {
+        var nr = Rechnungsnummer.Aus(b, person);
+        return new KontierungsZeile
+        {
+            Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Rechnungsnummer = nr,
+            Text = nr.Length > 0 ? Rechnungsnummer.Einsetzen(person.Name + " Re-Nr.:", nr) : text,
+        };
+    }
+
     private KontierungsZeile KundenZeile(PersonAccount person, Booking b, decimal betrag, string text)
     {
         var nr = b.OwnInvoiceNumbers.FirstOrDefault() ?? Rechnungsnummer.Aus(b, person);
@@ -160,13 +171,33 @@ public sealed class KontierungsVorschlag
     private static string Ohne(string name) =>
         name.StartsWith(TaxpoolVorlagenImport.Praefix, StringComparison.Ordinal) ? name[TaxpoolVorlagenImport.Praefix.Length..] : name;
 
+    private PersonenkontoErkennung? _erkennung;
+
+    /// <summary>Erkennung mit den Personenkonten und den Namen der Vorlagen, die auf ein Personenkonto buchen.</summary>
+    private PersonenkontoErkennung Erkennung => _erkennung ??= new PersonenkontoErkennung(_dir.Konten, VorlagenAliase(_s));
+
+    private static readonly System.Text.RegularExpressions.Regex Vorsatz =
+        new(@"^(Taxpool:\s*)?(!!\w+!!\s*)?", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Vorlagen mit Personenkonto als weitere Schreibweise des Namens ("Telekom Deutschland GmbH Re-Nr:" → 70004).</summary>
+    public static IEnumerable<(int Konto, string Name)> VorlagenAliase(AccountingSettings s) =>
+        s.Regeln.Where(r => r.Personenkonto > 0)
+            .Select(r =>
+            {
+                var name = Vorsatz.Replace(r.Name, "");
+                name = System.Text.RegularExpressions.Regex.Replace(name, @"(?:\bRe|\bBeleg|\bRechnungs?|\bRg)[\s\.\-]*Nr[\s\.:]*.*$", "",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+                return (r.Personenkonto, name);
+            })
+            .Where(x => x.name.Length >= 3);
+
     /// <summary>Wendet eine Regel oder Vorlage auf die Buchung an (auch von Hand aus der Oberfläche).</summary>
     public Kontierung AusRegel(Booking b, KontierungsRegel regel)
     {
         PersonAccount? person = null;
         PersonTreffer? treffer = null;
         if (regel.Personenkonto > 0) person = _dir.Get(regel.Personenkonto);
-        else if (regel.PersonenkontoSuchen) person = (treffer = _dir.Erkennen(b.Text, b.Amount))?.Konto;
+        else if (regel.PersonenkontoSuchen) person = (treffer = Erkennung.Finden(b.Text, b.Amount))?.Konto;
 
         int? personKonto = regel.Personenkonto > 0 ? regel.Personenkonto : person?.Konto;
         int sachkonto = regel.Sachkonto > 0 ? regel.Sachkonto : person?.StandardSachkonto ?? 0;
@@ -188,6 +219,9 @@ public sealed class KontierungsVorschlag
         // Rechnungsnummer: endet der Vorlagentext auf "Re-Nr.:", wird sie angehängt; außerdem Belegfeld 2
         var reNr = Rechnungsnummer.Aus(b, personKonto is int pkr ? _dir.Get(pkr) : null);
         var text = regel.Buchungstext.Trim().Length > 0 ? Rechnungsnummer.Einsetzen(regel.Buchungstext.Trim(), reNr) : Kurztext(b);
+        // Eingangsrechnung (Beleg auf dem Lieferanten): Nummer gehört in den Text, auch wenn die Vorlage keinen Platzhalter hat
+        if (reNr.Length > 0 && personKonto is not null && regel.RechnungEinbuchen && !text.Contains(reNr, StringComparison.OrdinalIgnoreCase))
+            text = Rechnungsnummer.Einsetzen((regel.Buchungstext.Trim().Length > 0 ? regel.Buchungstext.Trim() : person?.Name ?? text) + " Re-Nr.:", reNr);
         var k = new Kontierung
         {
             Personenkonto = personKonto,

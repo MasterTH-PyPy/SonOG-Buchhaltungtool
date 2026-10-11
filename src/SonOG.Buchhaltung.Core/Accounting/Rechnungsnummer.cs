@@ -31,8 +31,12 @@ public static class Rechnungsnummer
     public static string Aus(Booking b, PersonAccount? person = null)
     {
         var mitKennwort = AusKennwort(b);
-        if (mitKennwort.Length > 0) return mitKennwort;
-        return person?.RechnungsnummerFormen is { Count: > 0 } formen ? NachForm(b.Text, formen, b.Date.Year) : "";
+        if (person?.RechnungsnummerFormen is not { Count: > 0 } formen) return mitKennwort;
+        // Gelernte Form hat Vorrang: passt die Nummer hinter "RG" nicht (z. B. nur der erste Zahlenblock von
+        // "RG 424021580126 61"), wird die Nummer in der bekannten Form gesucht
+        if (mitKennwort.Length > 0 && formen.Any(f => Passt(mitKennwort, f, b.Date.Year))) return mitKennwort;
+        var nachForm = NachForm(b.Text, formen, b.Date.Year);
+        return nachForm.Length > 0 ? nachForm : mitKennwort;
     }
 
     private static string AusKennwort(Booking b)
@@ -90,15 +94,33 @@ public static class Rechnungsnummer
     /// <summary>Erstes Wort im Text, das einer der Formen entspricht (bei "J…" muss es mit dem Buchungsjahr oder Vorjahr beginnen).</summary>
     public static string NachForm(string text, IReadOnlyList<string> formen, int jahr)
     {
+        var woerter = Regex.Matches(text, @"[A-Za-z0-9][A-Za-z0-9\-/\.]*[A-Za-z0-9]|\d+").Select(m => m.Value).ToList();
         foreach (var form in formen)
-            foreach (Match w in Regex.Matches(text, @"[A-Za-z0-9][A-Za-z0-9\-/\.]*[A-Za-z0-9]|\d+"))
+        {
+            for (int i = 0; i < woerter.Count; i++)
             {
-                var t = w.Value;
-                foreach (var j in new[] { jahr, jahr - 1 })
-                    if (Form(t, j) == form && t.Any(char.IsDigit)) return t;
+                if (Passt(woerter[i], form, jahr)) return woerter[i];
+                // in Gruppen geschriebene Nummern ("42 4021 5801 2661"): bis zu fünf Zifferngruppen zusammensetzen
+                if (!woerter[i].All(char.IsDigit)) continue;
+                var zusammen = woerter[i];
+                var teile = new List<string> { woerter[i] };
+                for (int k = i + 1; k < Math.Min(woerter.Count, i + 5); k++)
+                {
+                    // nächster Block: ganze Ziffernfolge oder deren Anfang ("61/01.10.2026" → "61")
+                    var ziffern = new string(woerter[k].TakeWhile(char.IsDigit).ToArray());
+                    if (ziffern.Length == 0) break;
+                    zusammen += ziffern;
+                    teile.Add(ziffern);
+                    if (Passt(zusammen, form, jahr)) return string.Join(" ", teile);
+                    if (ziffern.Length != woerter[k].Length) break;
+                }
             }
+        }
         return "";
     }
+
+    private static bool Passt(string t, string form, int jahr) =>
+        t.Any(char.IsDigit) && (Form(t, jahr) == form || Form(t, jahr - 1) == form);
 
     /// <summary>
     /// Hängt die Nummer an, wenn der Text auf "Re-Nr.:" o. Ä. endet. Bei Überlänge wird vorne gekürzt, nie die Nummer.

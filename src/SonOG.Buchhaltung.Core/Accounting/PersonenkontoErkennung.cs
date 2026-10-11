@@ -43,12 +43,27 @@ public sealed class PersonenkontoErkennung
     private readonly Dictionary<PersonAccount, (List<string> Kurz, bool Person, string Norm)> _info = new();
     private readonly Dictionary<string, int> _haeufigkeit;
 
-    public PersonenkontoErkennung(IEnumerable<PersonAccount> konten)
+    /// <summary>Vorlagen-Namen als zusätzliche Schreibweise → eigentliches Personenkonto.</summary>
+    private readonly Dictionary<PersonAccount, PersonAccount> _original = new();
+
+    /// <param name="aliase">Weitere Namen für Personenkonten, z. B. aus Vorlagen ("Telekom Deutschland GmbH" → 70004).</param>
+    public PersonenkontoErkennung(IEnumerable<PersonAccount> konten, IEnumerable<(int Konto, string Name)>? aliase = null)
     {
-        _konten = konten.Where(k => k.Name.Trim().Length > 0 || k.Suchbegriffe.Count > 0)
+        var liste = konten.ToList();
+        var echte = liste.GroupBy(k => k.Konto).ToDictionary(g => g.Key, g => g.First());
+        foreach (var (nr, name) in aliase ?? Enumerable.Empty<(int, string)>())
+        {
+            if (!echte.TryGetValue(nr, out var orig) || name.Trim().Length == 0) continue;
+            if (NameMatcher.Normalize(name).Trim() == NameMatcher.Normalize(orig.Name).Trim()) continue; // gleicher Name wie das Konto
+            var alias = new PersonAccount { Konto = orig.Konto, Name = name.Trim(), Art = orig.Art, Nutzung = orig.Nutzung };
+            _original[alias] = orig;
+            liste.Add(alias);
+        }
+        _konten = liste.Where(k => k.Name.Trim().Length > 0 || k.Suchbegriffe.Count > 0)
             .Select(k => (k, NameMatcher.Tokens(k.Name).Distinct().ToList()))
             .ToList();
-        _haeufigkeit = _konten.SelectMany(k => k.Tokens).GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count());
+        _haeufigkeit = _konten.SelectMany(k => k.Tokens.Select(t => (t, k.Konto.Konto))).Distinct()
+            .GroupBy(x => x.t).ToDictionary(g => g.Key, g => g.Count());
         foreach (var (k, tokens) in _konten)
         {
             var woerter = NameMatcher.Normalize(k.Name).Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -104,7 +119,8 @@ public sealed class PersonenkontoErkennung
                     // ("Der Dübelshop Inh. Andreas Sommer" darf nicht auf "Andreas" anspringen)
                     var erstes = tokens.FirstOrDefault(t => IstMarkant(t, tokens));
                     var letztes = tokens.LastOrDefault(t => IstMarkant(t, tokens));
-                    var markant = treffer.Where(t => t == erstes || t == letztes || (treffer.Count >= 2 && IstMarkant(t, tokens))).ToList();
+                    // allein zählen nur ganze Wörter (ein Wortanfang wie "DEUTSCHLAND" für "Deutschlandradio" reicht nicht)
+                    var markant = treffer.Where(t => gewicht[t] == 2 && (t == erstes || t == letztes || (treffer.Count >= 2 && IstMarkant(t, tokens)))).ToList();
                     bool zulaessig = markant.Count > 0;
                     // Privatpersonen (Vor- und Nachname, keine Rechtsform): Nachname muss passen oder beide Namensteile
                     if (zulaessig && _info[konto].Person)
@@ -130,11 +146,13 @@ public sealed class PersonenkontoErkennung
             // Gleichnamige Konten (z. B. doppelt angelegt): das zuletzt häufiger bebuchte gewinnt, sonst mehrdeutig
             var zweit = sortiert[1];
             if (_info[best.Konto].Norm == _info[zweit.Konto].Norm && best.Konto.Nutzung > zweit.Konto.Nutzung)
-                return new PersonTreffer(best.Konto, best.Grund + $" (gleichnamig mit {zweit.Konto.Konto}, häufiger genutzt)");
+                return new PersonTreffer(Echt(best.Konto), best.Grund + $" (gleichnamig mit {zweit.Konto.Konto}, häufiger genutzt)");
             return null;
         }
-        return new PersonTreffer(best.Konto, best.Grund);
+        return new PersonTreffer(Echt(best.Konto), _original.ContainsKey(best.Konto) ? best.Grund.Replace("Name \"", "Vorlage \"").Replace("von \"", "der Vorlage \"") : best.Grund);
     }
+
+    private PersonAccount Echt(PersonAccount k) => _original.TryGetValue(k, out var o) ? o : k;
 
     /// <summary>Kandidaten zur Anzeige (z. B. wenn mehrdeutig), beste zuerst.</summary>
     public IReadOnlyList<PersonAccount> Kandidaten(string text, decimal betrag = 0, int max = 5)
@@ -145,7 +163,7 @@ public sealed class PersonenkontoErkennung
             .Select(k => (k.Konto, Treffer: k.Tokens.Count(t => NameMatcher.ContainsToken(textTokens, t) && IstMarkant(t, k.Tokens))))
             .Where(x => x.Treffer > 0)
             .OrderByDescending(x => x.Treffer).ThenByDescending(x => x.Konto.Art == bevorzugt)
-            .Take(max).Select(x => x.Konto).ToList();
+            .Select(x => Echt(x.Konto)).Distinct().Take(max).ToList();
     }
 
     /// <summary>

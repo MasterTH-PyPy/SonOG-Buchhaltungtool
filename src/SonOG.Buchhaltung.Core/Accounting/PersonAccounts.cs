@@ -72,7 +72,8 @@ public sealed class PersonAccountDirectory
     /// Personenkonto zum Buchungstext mit Begründung. Das Vorzeichen des Betrags bestimmt, welcher Kreis bevorzugt wird
     /// (Abbuchung → Lieferanten, Eingang → Kunden). Siehe <see cref="PersonenkontoErkennung"/>.
     /// </summary>
-    public PersonTreffer? Erkennen(string text, decimal betrag) => new PersonenkontoErkennung(Konten).Finden(text, betrag);
+    public PersonTreffer? Erkennen(string text, decimal betrag, IEnumerable<(int Konto, string Name)>? aliase = null) =>
+        new PersonenkontoErkennung(Konten, aliase).Finden(text, betrag);
 
     /// <summary>Einfache Suche ohne Richtung (nur Suchbegriffe und vollständiger Name), für ältere Aufrufer.</summary>
     public PersonAccount? FindByText(string text, PersonenArt? art = null)

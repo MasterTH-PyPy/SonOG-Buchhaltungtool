@@ -490,7 +490,7 @@ public static class TaxpoolDatenbank
                 if (jahr != 0 && jahr <= bisJahr - 3) continue;
                 var m = NummerNachPlatzhalter.Match(TaxpoolTabelle.Wert(z, iText));
                 if (!m.Success) continue;
-                var nr = m.Groups[1].Value.Trim('.', '-', '/');
+                var nr = m.Groups[1].Value.Trim('.', '-', '/').Replace(" ", ""); // "42 4021 5801 2661" → 42402158012661
                 if (!nr.Any(char.IsDigit)) continue;
                 foreach (var konto in new[] { Ganz(TaxpoolTabelle.Wert(z, iSoll), 0), Ganz(TaxpoolTabelle.Wert(z, iHaben), 0) })
                 {
@@ -513,7 +513,7 @@ public static class TaxpoolDatenbank
     }
 
     private static readonly Regex NummerNachPlatzhalter =
-        new(@"(?:\bRe|\bBeleg|\bRechnungs?|\bRg)[\s\.\-]*Nr[\s\.:]*\s*([A-Za-z0-9][A-Za-z0-9\-/\.]{2,})\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"(?:\bRe|\bBeleg|\bRechnungs?|\bRg)[\s\.\-]*Nr[\s\.:]*\s*([A-Za-z0-9](?:[A-Za-z0-9\-/\.]| (?=\d)){2,})\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static int Erstes(TaxpoolTabelle t, params string[] namen)
     {
