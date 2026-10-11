@@ -33,7 +33,10 @@ public sealed class KontierungsVorschlag
         {
             var inv = m.Invoices;
             var names = inv.Select(i => i.RecipientFirstLine).Append(b.PayerName).ToArray();
+            // zuerst über den Rechnungsempfänger, sonst über den Buchungstext (Kunde bevorzugt)
             var debitor = _dir.FindDebitor(names);
+            if (debitor is null && _dir.Erkennen(b.Text + " " + string.Join(" ", names), Math.Abs(b.Amount)) is { Konto.Art: PersonenArt.Debitor } t0)
+                debitor = t0.Konto;
             var k = new Kontierung
             {
                 Personenkonto = debitor?.Konto,
@@ -84,7 +87,8 @@ public sealed class KontierungsVorschlag
                 Personenkonto = person.Konto,
                 RechnungEinbuchen = false,
                 Quelle = KontierungsQuelle.Regel,
-                Hinweis = $"Zahlungseingang {person} (erkannt über {personTreffer!.Grund}) - gleicht den offenen Posten aus",
+                Hinweis = $"Zahlungseingang {person} (erkannt über {personTreffer!.Grund}) - gleicht den offenen Posten aus" +
+                          (VorlageFuer(person, b) is { } kv ? $", Text aus Vorlage \"{kv.Name}\"" : ""),
                 Zeilen = { KundenZeile(person, b, betrag, text) },
             };
         }

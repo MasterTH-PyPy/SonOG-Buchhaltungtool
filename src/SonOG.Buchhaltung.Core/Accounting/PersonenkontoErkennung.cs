@@ -53,7 +53,10 @@ public sealed class PersonenkontoErkennung
         {
             var woerter = NameMatcher.Normalize(k.Name).Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var kurz = woerter.Where(w => w.Length == 2 && !Rechtsform.Contains(w)).Distinct().ToList();
-            bool person = tokens.Count == 2 && !woerter.Any(Rechtsform.Contains) && !woerter.Any(w => w.Any(char.IsDigit));
+            // Kürzel in Großbuchstaben ("CSV Hückeswagen", "HP Druck") → Firma, kein Vor-/Nachname
+            bool kuerzel = k.Name.Split(new[] { ' ', '-', '.', '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(w => w.Length >= 2 && w.All(c => char.IsUpper(c) || char.IsDigit(c)) && w.Any(char.IsLetter));
+            bool person = tokens.Count == 2 && !kuerzel && !woerter.Any(Rechtsform.Contains) && !woerter.Any(w => w.Any(char.IsDigit));
             _info[k] = (kurz, person, string.Join(" ", tokens));
         }
     }

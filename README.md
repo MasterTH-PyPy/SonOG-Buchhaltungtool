@@ -77,6 +77,10 @@ Drei Arten zu buchen (Doppik mit Personenkonten):
 | Kreditor/Debitor | an | je Zeile: Sachkonto an Kreditor (bzw. Debitor an Erlös), Rechnungsdatum als Belegdatum; dann Zahlung: Kreditor an Bank |
 | Debitor/Kreditor | aus | Ausgleich offener Posten: Bank an Debitor je Rechnung (Rechnungsnummer in Belegfeld 1, laufende Nummer in Belegfeld 2) |
 
+**Sachkonto suchen:** Statt der Nummer die Bezeichnung ins Feld Sachkonto tippen (z. B. „Bürobedarf“): bei genau einem
+Treffer wird das Konto direkt eingesetzt, sonst öffnet sich die Suche. F4 oder „Konto suchen …“ öffnet sie jederzeit;
+mehrere Wörter grenzen ein („kfz rep“). Gilt auch für das Erlöskonto in der Sollstellung.
+
 **Splitbuchungen:** „+ Zeile (Rest)“ legt eine Zeile mit dem Restbetrag an, z. B. eine Amazon-Zahlung mit 100,00 auf 3400 und
 50,00 auf 1800. Die Summe der Zeilen muss dem Betrag im Kontoauszug entsprechen.
 

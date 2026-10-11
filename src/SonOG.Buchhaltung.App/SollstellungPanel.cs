@@ -208,7 +208,13 @@ internal sealed class SollstellungPanel : UserControl
                 p.Kontierung.Personenkonto = int.TryParse(text, out var d) && d > 0 ? d : null;
                 break;
             case "Erloes":
-                z.Sachkonto = int.TryParse(text, out var s) && s > 0 ? s : 0;
+                if (text.Length > 0 && !text.All(char.IsDigit))
+                {
+                    // Bezeichnung eingetippt (z. B. "Erlöse 19"): Konto suchen
+                    var gefunden = KontoSucheForm.Suchen(this, Tp.Settings, text);
+                    if (gefunden > 0) z.Sachkonto = gefunden;
+                }
+                else z.Sachkonto = int.TryParse(text, out var s) && s > 0 ? s : 0;
                 break;
             case "Bu":
                 z.BuSchluessel = text;

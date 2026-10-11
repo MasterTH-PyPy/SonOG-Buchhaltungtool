@@ -85,8 +85,13 @@ public class AccountingTests
     [Fact]
     public void Customer_payment_with_unknown_debtor_asks_for_account()
     {
-        var b = Customer(100m, Inv("202634001", 100m, "Ganz Andere AG"));
-        b.PayerName = "Ganz Andere AG";
+        var inv = Inv("202634001", 100m, "Ganz Andere AG");
+        var b = new Booking
+        {
+            Date = new DateOnly(2026, 9, 20), Type = "Gutschrift", Amount = 100m, Text = "Ganz Andere AG Re 202634001", PayerName = "Ganz Andere AG",
+            Number = "2026-0050", Category = BookingCategory.Kundenzahlung, OwnInvoiceNumbers = { "202634001" },
+            Match = new PaymentMatch { Status = MatchStatus.Ok, Invoices = { inv } },
+        };
         var k = new KontierungsVorschlag(Settings(), Dir()).Vorschlagen(b);
         Assert.Null(k.Personenkonto);
         Assert.Contains("Debitor", k.Hinweis);

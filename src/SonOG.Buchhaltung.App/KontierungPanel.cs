@@ -43,6 +43,7 @@ internal sealed class KontierungPanel : UserControl
     private readonly Button _btnStichwort = new() { Text = "Automatisch ...", AutoSize = true };
     private readonly DataGridView _lines = new();
     private readonly Button _btnAdd = new() { Text = "+ Zeile (Rest)", AutoSize = true };
+    private readonly Button _btnKonto = new() { Text = "Konto suchen ... (F4)", AutoSize = true };
     private readonly Button _btnDel = new() { Text = "Zeile entfernen", AutoSize = true };
     private readonly Button _btnReset = new() { Text = "Vorschlag wiederherstellen", AutoSize = true };
     private readonly Button _btnRegel = new() { Text = "Als Regel speichern ...", AutoSize = true };
@@ -144,7 +145,7 @@ internal sealed class KontierungPanel : UserControl
         editor.Controls.Add(_lines, 0, 2);
 
         var lineButtons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
-        lineButtons.Controls.AddRange(new Control[] { _btnAdd, _btnDel, _btnReset, _btnRegel, _btnOk, _lblSum });
+        lineButtons.Controls.AddRange(new Control[] { _btnKonto, _btnAdd, _btnDel, _btnReset, _btnRegel, _btnOk, _lblSum });
         _btnOk.Margin = new Padding(18, 3, 3, 3);
         editor.Controls.Add(lineButtons, 0, 3);
         editor.Controls.Add(_lblChecks, 0, 4);
@@ -191,6 +192,21 @@ internal sealed class KontierungPanel : UserControl
         _lines.CellEndEdit += OnLineEdited;
         _lines.DataError += (_, e) => e.ThrowException = false;
         _btnAdd.Click += (_, _) => OnAddLine();
+        _btnKonto.Click += (_, _) => KontoSuchen(_lines.CurrentCell?.RowIndex ?? 0);
+        _lines.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.F4) return;
+            KontoSuchen(_lines.CurrentCell?.RowIndex ?? 0);
+            e.Handled = true;
+        };
+        _lines.EditingControlShowing += (_, e) =>
+        {
+            // F4 auch während der Eingabe in einer Zelle; der getippte Text wird Suchbegriff
+            if (e.Control is not TextBox tb) return;
+            tb.KeyDown -= ZelleF4;
+            tb.KeyDown += ZelleF4;
+        };
+        new ToolTip().SetToolTip(_btnKonto, "Sachkonto über die Bezeichnung suchen. Tipp: Bezeichnung direkt ins Feld Sachkonto tippen, z. B. \"Bürobedarf\".");
         _btnDel.Click += (_, _) => OnDeleteLine();
         _btnReset.Click += (_, _) =>
         {
@@ -436,7 +452,7 @@ internal sealed class KontierungPanel : UserControl
     private void UpdateButtons()
     {
         bool has = Current?.Kontierung is not null;
-        foreach (var c in new Control[] { _cmbPerson, _btnPersonNeu, _cmbVorlage, _btnVorlage, _btnStichwort, _lines, _btnAdd, _btnDel, _btnReset, _btnRegel, _btnOk })
+        foreach (var c in new Control[] { _cmbPerson, _btnPersonNeu, _cmbVorlage, _btnVorlage, _btnStichwort, _btnKonto, _lines, _btnAdd, _btnDel, _btnReset, _btnRegel, _btnOk })
             c.Enabled = has;
         _chkEinbuchen.Enabled = has && Current!.Kontierung!.Personenkonto is not null;
         _btnNeu.Enabled = _session is not null;
@@ -567,19 +583,15 @@ internal sealed class KontierungPanel : UserControl
                 break;
             case "Sachkonto":
                 if (text.Length == 0) z.Sachkonto = 0;
-                else if (int.TryParse(text, out var konto) && konto > 0)
+                else if (int.TryParse(text, out var konto) && konto > 0) SachkontoSetzen(e.RowIndex, konto, speichern: false);
+                else
                 {
-                    bool geaendert = z.Sachkonto != konto;
-                    z.Sachkonto = konto;
-                    // BU-Schlüssel aus Taxpool vorschlagen (Automatikkonto → keiner)
-                    if (geaendert && k.BrauchtSachkonto)
-                    {
-                        if (Tp.Settings.IstAutomatikkonto(konto)) z.BuSchluessel = "";
-                        else if (z.BuSchluessel.Length == 0) z.BuSchluessel = Tp.Settings.BuVorschlag(konto, b.Amount < 0);
-                        _lines.Rows[e.RowIndex].Cells["Bu"].Value = z.BuSchluessel;
-                    }
+                    // Bezeichnung eingetippt: Konto suchen (genau ein Treffer → direkt, sonst Suchfenster)
+                    cell.Value = z.Sachkonto > 0 ? z.Sachkonto.ToString(CultureInfo.InvariantCulture) : "";
+                    int row = e.RowIndex;
+                    BeginInvoke(new Action(() => KontoSuchen(row, text)));
+                    return;
                 }
-                else error = "Sachkonto muss eine Zahl sein";
                 cell.Value = z.Sachkonto > 0 ? z.Sachkonto.ToString(CultureInfo.InvariantCulture) : "";
                 _lines.Rows[e.RowIndex].Cells["Kontoname"].Value = Tp.Settings.KontoName(z.Sachkonto);
                 break;
@@ -602,6 +614,52 @@ internal sealed class KontierungPanel : UserControl
         }
         if (error is not null) _status(error);
         Changed(reloadEditor: false);
+    }
+
+    /// <summary>Setzt das Sachkonto einer Zeile und schlägt den BU-Schlüssel aus Taxpool vor (Automatikkonto → keiner).</summary>
+    private void SachkontoSetzen(int row, int konto, bool speichern = true)
+    {
+        if (Current is not { Kontierung: { } k } b || row < 0 || row >= k.Zeilen.Count) return;
+        var z = k.Zeilen[row];
+        bool geaendert = z.Sachkonto != konto;
+        z.Sachkonto = konto;
+        if (geaendert && k.BrauchtSachkonto)
+        {
+            if (Tp.Settings.IstAutomatikkonto(konto)) z.BuSchluessel = "";
+            else if (z.BuSchluessel.Length == 0) z.BuSchluessel = Tp.Settings.BuVorschlag(konto, b.Amount < 0);
+        }
+        if (row < _lines.Rows.Count)
+        {
+            _filling = true;
+            try
+            {
+                _lines.Rows[row].Cells["Sachkonto"].Value = konto > 0 ? konto.ToString(CultureInfo.InvariantCulture) : "";
+                _lines.Rows[row].Cells["Kontoname"].Value = Tp.Settings.KontoName(konto);
+                _lines.Rows[row].Cells["Bu"].Value = z.BuSchluessel;
+            }
+            finally { _filling = false; }
+        }
+        if (speichern) Changed(reloadEditor: false);
+    }
+
+    private void ZelleF4(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.F4 || _lines.CurrentCell is not { } c) return;
+        var text = (sender as TextBox)?.Text ?? "";
+        int row = c.RowIndex;
+        bool sachkonto = _lines.Columns[c.ColumnIndex].Name == "Sachkonto";
+        e.Handled = e.SuppressKeyPress = true;
+        _lines.CancelEdit();
+        _lines.EndEdit();
+        BeginInvoke(new Action(() => KontoSuchen(row, sachkonto && !text.All(char.IsDigit) ? text : "")));
+    }
+
+    /// <summary>Sachkonto über die Bezeichnung suchen und in die Zeile übernehmen.</summary>
+    private void KontoSuchen(int row, string suche = "")
+    {
+        if (Current?.Kontierung is not { } k || row < 0 || row >= k.Zeilen.Count) return;
+        var konto = KontoSucheForm.Suchen(this, Tp.Settings, suche);
+        if (konto > 0) SachkontoSetzen(row, konto);
     }
 
     private void OnAddLine()
