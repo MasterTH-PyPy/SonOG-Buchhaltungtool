@@ -163,10 +163,10 @@ Wird beim ersten Start unter `%AppData%\SonOG-Buchhaltung` angelegt (Button **Re
 
 ## Versionsstand
 
-Steht im Fenstertitel und rechts in der Statusleiste, z. B. `1.0.42 (3b34c37)`. Haupt- und Nebenversion stehen in
-`Directory.Build.props` (`VersionPrefix`, von Hand hochsetzen bei größeren Änderungen); die letzte Stelle ist die Anzahl
-der Commits und zählt bei jedem Commit automatisch hoch. Dahinter steht der Commit; `+lokal` heißt: gebaut mit nicht
-eingecheckten Änderungen. Gilt auch für die Datei-Version der EXE.
+Steht im Fenstertitel und rechts in der Statusleiste, z. B. `1.0.13 (3b34c37)`. Haupt-/Nebenversion (`VersionPrefix`) und
+`BuildNummer` stehen in `Directory.Build.props`; die BuildNummer wird bei jedem Commit um 1 erhöht, die Version hängt also
+nicht davon ab, ob beim Bauen Git verfügbar ist. In Klammern steht – wenn Git verfügbar ist – der Commit; `+lokal` heißt:
+gebaut mit nicht eingecheckten Änderungen. Gilt auch für die Datei-Version der EXE.
 
 ## Icon
 

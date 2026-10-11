@@ -26,6 +26,8 @@ public class PersonenkontoErkennungTests
         P(15360, "EH-Hausverwaltung", PersonenArt.Debitor),
         P(15222, "QZ Seminare Inhaber: Thomas Kramerow", PersonenArt.Debitor),
         P(15300, "Stadtentwicklung Musterstadt GmbH", PersonenArt.Debitor, 0, "SEG MUSTERSTADT"),
+        P(15178, "Ferienhausvermietung Holger Sinclaro", PersonenArt.Debitor),
+        P(15225, "Immobilienverwaltung Gohrbach", PersonenArt.Debitor),
         P(70052, "Mobilfunk Nord", PersonenArt.Kreditor),
         P(70053, "Mobilfunk Süd", PersonenArt.Kreditor),
         P(70054, "Mobilfunk Ost", PersonenArt.Kreditor),
@@ -48,6 +50,8 @@ public class PersonenkontoErkennungTests
     [InlineData("EH-Hausverwaltung Miete Oktober", 500.0, 15360)]               // Kürzel aus zwei Buchstaben entscheidet
     [InlineData("QZ SEMINARE RE 202634004", 300.0, 15222)]                      // "Inhaber" → Firma, Nachnamen-Regel gilt nicht
     [InlineData("SEG MUSTERSTADT RE 202634005", 400.0, 15300)]                  // Suchbegriff
+    [InlineData("HOLGER SINCLARO RE 202634006", 450.0, 15178)]                  // letztes Namenswort genügt
+    [InlineData("GOHRBACH MIETE RE 202634007", 380.0, 15225)]
     public void Recognizes_account(string text, double betrag, int erwartet)
     {
         var t = F(text, (decimal)betrag);
@@ -103,6 +107,28 @@ public class PersonenkontoErkennungTests
         // Eingang beim selben Lieferanten (Erstattung): Vorlage gilt nur für Ausgänge → Standardkonto
         b = new Booking { Date = new DateOnly(2026, 10, 3), Amount = 5m, Text = "TOOM BM ERSTATTUNG", Number = "2026-0102", Category = BookingCategory.EingangSonstige };
         Assert.Equal(3030, new KontierungsVorschlag(s, dir).Vorschlagen(b).Zeilen[0].Sachkonto);
+    }
+
+    [Fact]
+    public void Customer_template_text_is_used_for_payment_and_sollstellung()
+    {
+        var (s, dir) = Umgebung();
+        s.Regeln.Add(new KontierungsRegel
+        {
+            Name = "Taxpool: Immobilienverwaltung Gohrbach Re-Nr.:", TaxpoolId = "g1", Personenkonto = 15225, Sachkonto = 8401,
+            Richtung = Richtung.Eingang, RechnungEinbuchen = true, Buchungstext = "Immobilienverwaltung Gohrbach Re-Nr.:",
+        });
+        // Zahlungseingang: OP-Ausgleich, Text aus der Vorlage mit der eigenen Rechnungsnummer
+        var b = new Booking { Date = new DateOnly(2026, 10, 5), Amount = 380m, Text = "GOHRBACH MIETE RE 202634007", Number = "2026-0110",
+            Category = BookingCategory.Kundenzahlung, OwnInvoiceNumbers = { "202634007" } };
+        var k = new KontierungsVorschlag(s, dir).Vorschlagen(b);
+        Assert.Equal((15225, false, "Immobilienverwaltung Gohrbach Re-Nr.: 202634007", "202634007"),
+            (k.Personenkonto, k.RechnungEinbuchen, k.Zeilen[0].Text, k.Zeilen[0].Rechnungsnummer));
+
+        // Sollstellung: Erlöskonto und Text aus der Vorlage
+        var r = new SonOG.Buchhaltung.Core.Invoices.InvoiceRecord("202634007", "x.pdf", 380m, "Immobilienverwaltung Gohrbach\nWeg 1", new DateOnly(2026, 9, 30));
+        var ks = Sollstellung.KontierungFuer(r, s, dir);
+        Assert.Equal((15225, 8401, "Immobilienverwaltung Gohrbach Re-Nr.: 202634007"), (ks.Personenkonto, ks.Zeilen[0].Sachkonto, ks.Zeilen[0].Text));
     }
 
     [Fact]

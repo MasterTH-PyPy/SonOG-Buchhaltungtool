@@ -68,6 +68,14 @@ public static class Sollstellung
         var debitor = dir.FindDebitor(r.RecipientFirstLine, r.Recipient);
         int erloes = debitor is { StandardSachkonto: > 0 } ? debitor.StandardSachkonto : s.SollstellungErloeskonto;
         string bu = debitor is { StandardSachkonto: > 0 } ? debitor.StandardBuSchluessel : s.SollstellungBuSchluessel;
+        // Vorlage des Kunden (z. B. aus Taxpool "Immobilienverwaltung Gohr Re-Nr.:" an 8400) geht vor: Erlöskonto und Text
+        var vorlage = debitor is null ? null : KontierungsVorschlag.VorlageFuer(s, debitor.Konto, Richtung.Eingang, r.RecipientFirstLine);
+        if (vorlage is { Sachkonto: > 0, RechnungEinbuchen: true })
+        {
+            erloes = vorlage.Sachkonto;
+            bu = vorlage.BuSchluessel;
+        }
+        var vorlagenText = debitor is null ? null : KontierungsVorschlag.KundenText(s, debitor.Konto, r.Number, r.RecipientFirstLine);
         return new Kontierung
         {
             Personenkonto = debitor?.Konto,
@@ -83,7 +91,7 @@ public static class Sollstellung
                     BuSchluessel = bu,
                     Rechnungsnummer = r.Number,
                     Belegdatum = r.Date,
-                    Text = KontierungsVorschlag.Cut($"AR {r.Number} {r.RecipientFirstLine}"),
+                    Text = vorlagenText ?? KontierungsVorschlag.Cut($"AR {r.Number} {r.RecipientFirstLine}"),
                 },
             },
         };

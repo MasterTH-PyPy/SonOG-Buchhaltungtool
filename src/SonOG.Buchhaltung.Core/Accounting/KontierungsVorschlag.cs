@@ -47,12 +47,21 @@ public sealed class KontierungsVorschlag
             if (inv.Count > 1 && inv.All(i => i.GrossAmount is not null) && sum == betrag)
             {
                 foreach (var i in inv)
-                    k.Zeilen.Add(new KontierungsZeile { Betrag = i.GrossAmount!.Value, Rechnungsnummer = i.Number, Text = Cut($"Zahlung Re {i.Number} {i.RecipientFirstLine}") });
+                    k.Zeilen.Add(new KontierungsZeile
+                    {
+                        Betrag = i.GrossAmount!.Value, Rechnungsnummer = i.Number,
+                        Text = (debitor is null ? null : KundenText(_s, debitor.Konto, i.Number, b.Text)) ?? Cut($"Zahlung Re {i.Number} {i.RecipientFirstLine}"),
+                    });
             }
             else
             {
                 var nr = string.Join(",", inv.Select(i => i.Number));
-                k.Zeilen.Add(new KontierungsZeile { Betrag = betrag, Rechnungsnummer = inv.Count == 1 ? inv[0].Number : "", Text = Cut($"Zahlung Re {nr} {inv[0].RecipientFirstLine}") });
+                k.Zeilen.Add(new KontierungsZeile
+                {
+                    Betrag = betrag, Rechnungsnummer = inv.Count == 1 ? inv[0].Number : "",
+                    Text = (debitor is not null && inv.Count == 1 ? KundenText(_s, debitor.Konto, inv[0].Number, b.Text) : null)
+                           ?? Cut($"Zahlung Re {nr} {inv[0].RecipientFirstLine}"),
+                });
                 if (m.Difference is { } d && d != 0)
                     k.Hinweis += $"; Differenz {d:N2} zur Rechnung - Rest (Skonto o. Ä.) in Taxpool ausbuchen oder Zeile aufteilen";
             }
@@ -76,7 +85,7 @@ public sealed class KontierungsVorschlag
                 RechnungEinbuchen = false,
                 Quelle = KontierungsQuelle.Regel,
                 Hinweis = $"Zahlungseingang {person} (erkannt über {personTreffer!.Grund}) - gleicht den offenen Posten aus",
-                Zeilen = { new KontierungsZeile { Betrag = betrag, Text = text } },
+                Zeilen = { KundenZeile(person, b, betrag, text) },
             };
         }
 
@@ -118,15 +127,30 @@ public sealed class KontierungsVorschlag
     /// Vorlage, die genau dieses Personenkonto bebucht und zur Richtung passt. Bei mehreren gewinnt die, deren Name
     /// am besten zum Buchungstext passt; bei Gleichstand die kürzeste Bezeichnung (meist die allgemeine).
     /// </summary>
-    private KontierungsRegel? VorlageFuer(PersonAccount person, Booking b)
-    {
-        var richtung = b.Amount < 0 ? Richtung.Ausgang : Richtung.Eingang;
-        return _s.Regeln
-            .Where(r => r.Personenkonto == person.Konto && (r.Richtung == Richtung.Alle || r.Richtung == richtung))
+    private KontierungsRegel? VorlageFuer(PersonAccount person, Booking b) =>
+        VorlageFuer(_s, person.Konto, b.Amount < 0 ? Richtung.Ausgang : Richtung.Eingang, b.Text);
+
+    /// <summary>Vorlage für ein Personenkonto und eine Richtung (auch für die Sollstellung: Debitor, Eingang).</summary>
+    public static KontierungsRegel? VorlageFuer(AccountingSettings s, int personenkonto, Richtung richtung, string text) =>
+        s.Regeln
+            .Where(r => r.Personenkonto == personenkonto && (r.Richtung == Richtung.Alle || r.Richtung == richtung))
             .Where(r => r.Sachkonto > 0 || r.Aufteilung is { Count: > 0 } || !r.RechnungEinbuchen)
-            .OrderByDescending(r => NameMatcher.Score(Ohne(r.Name), b.Text))
+            .OrderByDescending(r => NameMatcher.Score(Ohne(r.Name), text))
             .ThenBy(r => r.Name.Length)
             .FirstOrDefault();
+
+    private KontierungsZeile KundenZeile(PersonAccount person, Booking b, decimal betrag, string text)
+    {
+        var nr = b.OwnInvoiceNumbers.FirstOrDefault() ?? Rechnungsnummer.Aus(b);
+        return new KontierungsZeile { Betrag = betrag, Rechnungsnummer = nr, Text = KundenText(_s, person.Konto, nr, b.Text) ?? text };
+    }
+
+    /// <summary>Buchungstext aus der Vorlage des Kunden mit Rechnungsnummer ("Immobilienverwaltung Gohr Re-Nr.: 202634552"), sonst null.</summary>
+    public static string? KundenText(AccountingSettings s, int debitor, string rechnungsnummer, string text = "")
+    {
+        var v = VorlageFuer(s, debitor, Richtung.Eingang, text);
+        var vt = v?.Buchungstext.Trim() ?? "";
+        return vt.Length > 0 && rechnungsnummer.Length > 0 && Rechnungsnummer.HatPlatzhalter(vt) ? Rechnungsnummer.Einsetzen(vt, rechnungsnummer) : null;
     }
 
     private static string Ohne(string name) =>

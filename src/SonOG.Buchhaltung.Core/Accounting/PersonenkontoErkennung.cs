@@ -10,7 +10,7 @@ public sealed record PersonTreffer(PersonAccount Konto, string Grund);
 /// <list type="number">
 /// <item>Suchbegriffe der Personenkonten (z. B. "AMAZON") - stärkster Hinweis.</item>
 /// <item>Alle Namensteile stehen im Text ("Toom Baumarkt GmbH" in "TOOM BAUMARKT SAGT DANKE").</item>
-/// <item>Das erste markante Wort des Namens steht als ganzes Wort im Text ("TOOM", "ADN"). Allgemeine Wörter (Baumarkt,
+/// <item>Das erste oder letzte markante Wort des Namens steht als ganzes Wort im Text ("TOOM", "ADN", "SINCL"). Allgemeine Wörter (Baumarkt,
 /// Handel, Technik ...) und Wörter, die in mehreren Kontennamen vorkommen, zählen dabei nicht. Bei Kunden mit Vor- und
 /// Nachname muss der Nachname passen, damit nicht jeder "Michael" trifft.</item>
 /// </list>
@@ -96,10 +96,12 @@ public sealed class PersonenkontoErkennung
                 }
                 else if (treffer.Count > 0)
                 {
-                    // Nur das erste markante Wort des Namens zählt allein (Marke/Firmenkern: "Toom", "ADN", "IKEA"),
-                    // nicht ein Vorname weiter hinten ("Der Dübelshop Inh. Andreas Sommer" darf nicht auf "Andreas" anspringen)
+                    // Allein zählt nur das erste oder letzte markante Wort des Namens (Marke vorne: "Toom", "ADN";
+                    // Nachname hinten: "Ferienhausvermietung Holger Sincl"), nicht ein Vorname in der Mitte
+                    // ("Der Dübelshop Inh. Andreas Sommer" darf nicht auf "Andreas" anspringen)
                     var erstes = tokens.FirstOrDefault(t => IstMarkant(t, tokens));
-                    var markant = treffer.Where(t => t == erstes || (treffer.Count >= 2 && IstMarkant(t, tokens))).ToList();
+                    var letztes = tokens.LastOrDefault(t => IstMarkant(t, tokens));
+                    var markant = treffer.Where(t => t == erstes || t == letztes || (treffer.Count >= 2 && IstMarkant(t, tokens))).ToList();
                     bool zulaessig = markant.Count > 0;
                     // Privatpersonen (Vor- und Nachname, keine Rechtsform): Nachname muss passen oder beide Namensteile
                     if (zulaessig && _info[konto].Person)
