@@ -31,6 +31,12 @@ internal sealed class SollstellungPanel : UserControl
     private readonly Button _btnFreigeben = new() { Text = "Monat freigeben ...", AutoSize = true };
     private readonly Button _btnCao = new() { Text = "CAO-Datenbank ...", AutoSize = true };
     private readonly Action<IWin32Window>? _caoEinstellungen;
+
+    // Personenkonten, die in Taxpool noch angelegt werden müssen (oben angezeigt)
+    private readonly Panel _pnlFehlend = new() { Dock = DockStyle.Top, Height = 110, Padding = new Padding(10, 4, 10, 6), BackColor = Color.FromArgb(0xFD, 0xEC, 0xEA), Visible = false };
+    private readonly Label _lblFehlend = new() { Dock = DockStyle.Top, AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold), Padding = new Padding(0, 2, 0, 4) };
+    private readonly TextBox _txtFehlend = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None, BackColor = Color.FromArgb(0xFD, 0xEC, 0xEA) };
+    private readonly Button _btnTaxpoolNeu = new() { Text = "Angelegt - aus Taxpool neu lesen", AutoSize = true, Dock = DockStyle.Right };
     private readonly Button _btnExport = new() { Text = "Sollstellung exportieren ...", AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
     private readonly Label _lblInfo = new() { AutoSize = true, Margin = new Padding(12, 8, 3, 3), ForeColor = Color.DimGray };
     private readonly DataGridView _grid = new();
@@ -63,6 +69,11 @@ internal sealed class SollstellungPanel : UserControl
             Text = "Bucht jede Ausgangsrechnung des Monats als Forderung auf den Debitor (Debitor an Erlöskonto, Rechnungsdatum, Rechnungsnummer als Beleg). " +
                    "Die Zahlung gleicht der Kontoauszug später aus. Schon übergebene Rechnungen sind grau und werden nicht noch einmal exportiert.",
         };
+
+        _pnlFehlend.Controls.Add(_txtFehlend);
+        _pnlFehlend.Controls.Add(_btnTaxpoolNeu);
+        _pnlFehlend.Controls.Add(_lblFehlend);
+        _btnTaxpoolNeu.Click += (_, _) => OnTaxpoolNeuLesen();
 
         _grid.Dock = DockStyle.Fill;
         _grid.AllowUserToAddRows = false;
@@ -99,6 +110,7 @@ internal sealed class SollstellungPanel : UserControl
 
         Controls.Add(_grid);
         Controls.Add(help);
+        Controls.Add(_pnlFehlend);
         Controls.Add(top);
 
         _btnLaden.Click += async (_, _) => await OnLadenAsync();
@@ -176,6 +188,7 @@ internal sealed class SollstellungPanel : UserControl
         }
         UpdateInfo();
         UpdateButtons();
+        FehlendeAnzeigen();
     }
 
     private void FillRow(DataGridViewRow row, SollstellungsPosten p)
@@ -198,7 +211,7 @@ internal sealed class SollstellungPanel : UserControl
         row.Cells["Debitor"].Value = k.Personenkonto?.ToString(CultureInfo.InvariantCulture) ?? "";
         row.Cells["DebitorName"].Value = k.Personenkonto is int pk
             ? Tp.Personen.Get(pk)?.Name
-              ?? (p.Rechnung.CaoKunde is { } ck && Tp.Settings.DebitorZuKundennummer(ck.Kundennummer) == pk ? ck.Name + "  (neu aus CAO)" : "(nicht im Verzeichnis)")
+              ?? "(nicht im Verzeichnis)"
             : "";
         row.Cells["Erloes"].Value = z is { Sachkonto: > 0 } ? z.Sachkonto.ToString(CultureInfo.InvariantCulture) : "";
         row.Cells["Bu"].Value = z?.BuSchluessel ?? "";
@@ -267,6 +280,53 @@ internal sealed class SollstellungPanel : UserControl
         _btnFreigeben.Enabled = _index is not null;
     }
 
+    /// <summary>Kunden, deren Debitor (aus der Kundennummer) in Taxpool noch fehlt - zum Anlegen von Konto und Vorlage in Taxpool.</summary>
+    private void FehlendeAnzeigen()
+    {
+        var fehlend = Sollstellung.FehlendeDebitoren(_posten, Tp.Settings, Tp.Personen);
+        _pnlFehlend.Visible = fehlend.Count > 0;
+        if (fehlend.Count == 0) return;
+        _lblFehlend.Text = $"{fehlend.Count} Personenkonto/-konten in Taxpool noch nicht angelegt - bitte dort Konto und Vorlage anlegen, dann neu lesen:";
+        _txtFehlend.Text = string.Join(Environment.NewLine, fehlend.Select(f =>
+            $"{f.Konto}   {f.Name}" + (f.Anschrift.Length > 0 ? "   " + f.Anschrift : "") +
+            $"   (Kd-Nr. {f.Kundennummer}, Re {string.Join(", ", f.Rechnungen)})"));
+        _pnlFehlend.Height = Math.Min(200, 46 + fehlend.Count * (_txtFehlend.Font.Height + 2));
+    }
+
+    /// <summary>Nach dem Anlegen in Taxpool: Taxpool-Datei neu lesen (Personenkonten und Vorlagen) und die Sollstellung neu vorschlagen.</summary>
+    private void OnTaxpoolNeuLesen()
+    {
+        try
+        {
+            UseWaitCursor = true;
+            var r = Tp.TaxpoolAktualisieren();
+            UseWaitCursor = false;
+            if (r is null)
+            {
+                var datei = Tp.Settings.TaxpoolDatei;
+                MessageBox.Show(this, datei.Length == 0
+                        ? "Es ist keine Taxpool-Datei gemerkt. Bitte im Reiter Kontieren \"Aus Taxpool lesen ...\" wählen."
+                        : $"Die Taxpool-Datei hat sich seit dem letzten Lesen nicht geändert:\n{datei}\n\n" +
+                          "Nach dem Anlegen in Taxpool bitte die Datensicherung neu erstellen (bzw. Taxpool schließen, damit die Datei geschrieben wird).",
+                    "Sollstellung", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            // nur offene Rechnungen ohne Debitor neu vorschlagen, Änderungen von Hand bleiben
+            foreach (var p in _posten.Where(p => p.BereitsGestellt.Length == 0 && p.Kontierung.Personenkonto is null))
+                p.Kontierung = Sollstellung.KontierungFuer(p.Rechnung, Tp.Settings, Tp.Personen);
+            Fill();
+            _status(r);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Sollstellung", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
     private SollstellungsPosten? Current => _grid.CurrentRow?.Tag as SollstellungsPosten;
 
     private void OnDebitorNeu()
@@ -331,8 +391,6 @@ internal sealed class SollstellungPanel : UserControl
             var hinweise = r.Hinweise.Where(h => h.Stufe == PruefStufe.Hinweis).ToList();
             var msg = $"Fertig: {r.Buchungssaetze} Buchungssätze.\n\nImportdatei: {Path.GetFileName(r.Datei)}\n" +
                       (r.PersonenkontenDatei is null ? "" : $"Verwendete Debitoren: {Path.GetFileName(r.PersonenkontenDatei)}\n") +
-                      (r.StammdatenDatei is null ? "" : $"\nNeue Debitoren für Taxpool: {Path.GetFileName(r.StammdatenDatei)}\n" +
-                                                        "→ in Taxpool ZUERST diese Stammdaten importieren, dann die Sollstellung.\n") +
                       (hinweise.Count > 0 ? "\nHinweise:\n" + string.Join("\n", hinweise.Take(10).Select(h => "• " + h.Nummer + ": " + h.Text)) + "\n" : "") +
                       "\nAusgabeordner öffnen?";
             _status($"Sollstellung erzeugt: {Path.GetFileName(r.Datei)}");

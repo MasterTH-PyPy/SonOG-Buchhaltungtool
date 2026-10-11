@@ -61,9 +61,7 @@ public static class TaxpoolVorlagenImport
                 continue;
             }
             var art = konto >= s.DebitorenVon && konto <= s.DebitorenBis ? PersonenArt.Debitor : PersonenArt.Kreditor;
-            var p = dir.Upsert(konto, name, art);
-            p.Nutzung = d.KontoNutzung.GetValueOrDefault(konto);
-            p.NeuFuerTaxpool = false; // jetzt in Taxpool angelegt
+            dir.Upsert(konto, name, art).Nutzung = d.KontoNutzung.GetValueOrDefault(konto);
             e.Personenkonten++;
         }
 

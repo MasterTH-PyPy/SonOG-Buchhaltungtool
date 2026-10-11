@@ -302,7 +302,7 @@ public class AccountingTests
     }
 
     [Fact]
-    public void New_customer_from_cao_is_offered_and_exported_as_master_data()
+    public void Missing_debitor_from_cao_is_listed_not_guessed()
     {
         var s = Settings();
         var dir = Dir();
@@ -310,24 +310,18 @@ public class AccountingTests
         // Namensähnlichkeit zu einem bestehenden Debitor darf nicht greifen, wenn die Kundennummer neu ist
         var inv = CaoAbgleich.Anwenden(new InvoiceRecord("202634030", "n.pdf", 238m, "Beispiel Bau", new DateOnly(2026, 9, 10)), c);
         var posten = new List<SollstellungsPosten> { new(inv, Sollstellung.KontierungFuer(inv, s, dir)) };
-        // Felder sofort gefüllt: Debitor = Kundennummer, Text mit dem CAO-Namen; angelegt wird beim Export
+        Assert.Null(posten[0].Kontierung.Personenkonto);
+        Assert.Contains(Buchungssaetze.Pruefen(posten[0], s, dir), x => x.Stufe == PruefStufe.Fehler && x.Text.Contains("15379"));
+
+        var f = Assert.Single(Sollstellung.FehlendeDebitoren(posten, s, dir));
+        Assert.Equal((15379, "KD-05379", "Neukunde GmbH", "Hauptstr. 5, 64319 Pfungstadt"), (f.Konto, f.Kundennummer, f.Name, f.Anschrift));
+        Assert.Equal(new[] { "202634030" }, f.Rechnungen);
+
+        // in Taxpool angelegt und neu gelesen → zugeordnet, nicht mehr in der Liste
+        dir.Upsert(15379, "Neukunde GmbH", PersonenArt.Debitor);
+        posten[0].Kontierung = Sollstellung.KontierungFuer(inv, s, dir);
         Assert.Equal(15379, posten[0].Kontierung.Personenkonto);
-        Assert.Equal("Neukunde GmbH Re-Nr.: 202634030", posten[0].Kontierung.Zeilen[0].Text);
-        Assert.Contains("aus CAO", posten[0].Kontierung.Hinweis);
-        Assert.DoesNotContain(Buchungssaetze.Pruefen(posten[0], s, dir), x => x.Stufe == PruefStufe.Fehler);
-
-        var fehlend = Assert.Single(Sollstellung.FehlendeDebitoren(posten, s, dir));
-        var p = Sollstellung.DebitorAusCao(fehlend, s, dir);
-        Assert.Equal((15379, "Neukunde GmbH", "64319", true), (p.Konto, p.Name, p.Plz, p.NeuFuerTaxpool));
         Assert.Empty(Sollstellung.FehlendeDebitoren(posten, s, dir));
-        Assert.Equal(15379, Sollstellung.KontierungFuer(inv, s, dir).Personenkonto);
-
-        var datei = DatevPersonenkonten.Erzeugen(new DatevKopf { WirtschaftsjahrBeginn = new DateOnly(2026, 1, 1) }, new[] { p }).Split("\r\n");
-        Assert.StartsWith("\"EXTF\";700;16;\"Debitoren/Kreditoren\";5;", datei[0]);
-        Assert.StartsWith("Konto;Name (Adressattyp Unternehmen);", datei[1]);
-        Assert.StartsWith("15379;\"Neukunde GmbH\";", datei[2]);
-        Assert.Contains("\"Hauptstr. 5\";\"\";\"64319\";\"Pfungstadt\"", datei[2]);
-        Assert.Equal(DatevPersonenkonten.Spalten.Length, datei[2].Split(';').Length);
     }
 
     [Theory]

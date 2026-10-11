@@ -199,12 +199,11 @@ public static class Buchungssaetze
         if (p.Rechnung.Date is null) list.Add(new(PruefStufe.Fehler, nr, "Rechnungsdatum nicht lesbar"));
         if (p.Rechnung.GrossAmount is not { } brutto) list.Add(new(PruefStufe.Fehler, nr, "Rechnungsbetrag nicht lesbar"));
         else if (k.Summe != Math.Abs(brutto)) list.Add(new(PruefStufe.Fehler, nr, $"Summe {k.Summe:N2} ≠ Rechnungsbetrag {Math.Abs(brutto):N2}"));
-        if (k.Personenkonto is not { } pk) list.Add(new(PruefStufe.Fehler, nr, "Debitor fehlt"));
+        if (k.Personenkonto is not { } pk)
+            list.Add(new(PruefStufe.Fehler, nr, s.DebitorZuKundennummer(p.Rechnung.Kundennummer) is int neu
+                ? $"Debitor {neu} fehlt - erst in Taxpool anlegen (siehe oben)" : "Debitor fehlt"));
         else if (pk < s.DebitorenVon || pk > s.DebitorenBis) list.Add(new(PruefStufe.Fehler, nr, $"{pk} ist kein Debitorenkonto"));
-        else if (dir.Get(pk) is null)
-            list.Add(new(PruefStufe.Hinweis, nr, p.Rechnung.CaoKunde is { } ck && s.DebitorZuKundennummer(ck.Kundennummer) == pk
-                ? $"Neuer Debitor {pk} aus CAO - wird beim Export angelegt (Stammdaten für Taxpool)"
-                : $"Debitor {pk} ist nicht im Verzeichnis - in Taxpool vorhanden?"));
+        else if (dir.Get(pk) is null) list.Add(new(PruefStufe.Hinweis, nr, $"Debitor {pk} ist nicht im Verzeichnis - in Taxpool vorhanden?"));
         if (k.Personenkonto is int d && s.DebitorZuKundennummer(p.Rechnung.Kundennummer) is int soll && soll != d)
             list.Add(new(PruefStufe.Hinweis, nr, $"Debitor {d} weicht von der Kundennummer {p.Rechnung.Kundennummer} (= {soll}) auf der Rechnung ab"));
         foreach (var z in k.Zeilen)
