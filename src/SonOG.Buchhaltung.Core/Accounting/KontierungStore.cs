@@ -30,6 +30,9 @@ public sealed class KontierungStore
     /// <summary>Bisherige Exporte nach Taxpool (Warnung bei doppeltem Import).</summary>
     public List<ExportEintrag> Exporte { get; set; } = new();
 
+    /// <summary>Vergebene EK-Belegnummern je Bankbuchung (laufende Nummer → "EK-RE-DB 400"), damit ein erneuter Export dieselben nutzt.</summary>
+    public Dictionary<string, string> EkNummern { get; set; } = new();
+
     public static string PathFor(string dataDir, string statementKey)
     {
         var name = statementKey;
@@ -53,6 +56,14 @@ public sealed class KontierungStore
     /// <summary>Gespeicherte Kontierung für die Buchung an Position <paramref name="index"/>, wenn Datum und Betrag passen.</summary>
     public Kontierung? Find(int index, Booking b) =>
         Eintraege.FirstOrDefault(e => e.Index == index && e.Datum == b.Date && e.Betrag == b.Amount)?.Kontierung.Clone();
+
+    /// <summary>Neuer Stand aus den Buchungen; Exporte und EK-Nummern werden aus <paramref name="alt"/> übernommen.</summary>
+    public static KontierungStore From(IReadOnlyList<Booking> bookings, KontierungStore alt)
+    {
+        var s = From(bookings, alt.Exporte);
+        foreach (var (k, v) in alt.EkNummern) s.EkNummern[k] = v;
+        return s;
+    }
 
     public static KontierungStore From(IReadOnlyList<Booking> bookings, IEnumerable<ExportEintrag>? exporte = null)
     {

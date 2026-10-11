@@ -91,7 +91,7 @@ public sealed class TaxpoolService
     {
         var path = KontierungStore.PathFor(_dataDir, statementKey);
         var old = KontierungStore.Load(path);
-        KontierungStore.From(st.Bookings, old.Exporte).Save(path);
+        KontierungStore.From(st.Bookings, old).Save(path);
     }
 
     public IReadOnlyList<KontierungStore.ExportEintrag> Exporte(string statementKey) =>
@@ -132,19 +132,79 @@ public sealed class TaxpoolService
         var pruefungen = st.Bookings.SelectMany(Pruefen).ToList();
         Abbrechen(pruefungen);
 
-        var rows = st.Bookings.SelectMany(b => Buchungssaetze.AusKontoauszug(b, Settings)).ToList();
+        // Eingangsrechnungen (Beleg auf einem Lieferanten einbuchen) bekommen eine eigene EK-Belegnummer
+        var path = KontierungStore.PathFor(_dataDir, statementKey);
+        var alt = KontierungStore.Load(path);
+        var (taxpoolEk, ekHinweis) = EkStandAusTaxpool();
+        var ek = EkNummernVergeben(st, alt, taxpoolEk);
+
+        var rows = st.Bookings.SelectMany(b => Buchungssaetze.AusKontoauszug(b, Settings, ek.GetValueOrDefault(b.Number))).ToList();
         var name = "Kontoauszug_" + statementKey;
         var kopf = Buchungssaetze.Kopf(rows, Settings, Bezeichnung(st.Title.Length > 0 ? "Auszug " + st.Title : name));
         var result = Schreiben(outputFolder, name, kopf, rows);
         result.Belege = st.Bookings.Count;
         result.Hinweise.AddRange(pruefungen);
 
-        var path = KontierungStore.PathFor(_dataDir, statementKey);
-        var store = KontierungStore.From(st.Bookings, KontierungStore.Load(path).Exporte);
+        var store = KontierungStore.From(st.Bookings, alt);
+        foreach (var (k, v) in ek) store.EkNummern[k] = v;
         store.Exporte.Add(new KontierungStore.ExportEintrag { Am = DateTime.Now, Datei = result.Datei, Buchungssaetze = rows.Count });
         store.Save(path);
+        SaveSettings(); // EK-Zähler
+        if (ek.Count > 0)
+            result.Hinweise.Add(new Pruefung(PruefStufe.Hinweis, "EK", $"Eingangsrechnungen {ek.Values.First()} bis {ek.Values.Last()} - {ekHinweis}"));
         return result;
     }
+
+    /// <summary>
+    /// Liest bei jedem Export den aktuellen EK-Stand aus der Taxpool-Datei (in Taxpool von Hand erfasste Belege zählen mit).
+    /// Liefert die höchste Nummer je Jahr und einen Hinweis, wie aktuell die Prüfung ist.
+    /// </summary>
+    private (Dictionary<int, int> MaxJeJahr, string Hinweis) EkStandAusTaxpool()
+    {
+        var path = Settings.TaxpoolDatei;
+        if (string.IsNullOrWhiteSpace(path) || !(File.Exists(path) || Directory.Exists(path)))
+            return (new(), "EK-Stand NICHT in Taxpool geprüft (keine Taxpool-Datei gemerkt) - weitergezählt ab dem letzten bekannten Stand");
+        try
+        {
+            var d = TaxpoolDatenbank.Lesen(path);
+            var max = d.EkMax.Where(x => x.Key.Kreis == Settings.EkBelegkreis).ToDictionary(x => x.Key.Jahr, x => x.Value);
+            var stand = Stand(path).ToLocalTime();
+            return (max, $"EK-Stand geprüft in {Path.GetFileName(path)} (Stand {stand:dd.MM.yyyy HH:mm}; danach in Taxpool erfasste Belege sind dort nicht enthalten)");
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return (new(), "EK-Stand NICHT in Taxpool geprüft (" + ex.Message + ") - weitergezählt ab dem letzten bekannten Stand");
+        }
+    }
+
+    /// <summary>
+    /// EK-Belegnummer je Eingangsrechnung (Personenkonto ist ein Lieferant, Beleg wird eingebucht). Schon vergebene
+    /// Nummern desselben Auszugs werden wiederverwendet, neue zählen je Jahr ab dem höchsten bekannten Stand weiter.
+    /// </summary>
+    private Dictionary<string, string> EkNummernVergeben(ParsedStatement st, KontierungStore alt, Dictionary<int, int> taxpoolMax)
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var b in st.Bookings)
+        {
+            if (b.Kontierung is not { RechnungEinbuchen: true, Personenkonto: int pk }) continue;
+            if (pk < Settings.KreditorenVon || pk > Settings.KreditorenBis) continue;
+            int jahr = b.Date.Year;
+            int inTaxpool = taxpoolMax.GetValueOrDefault(jahr);
+            // Nummer aus einem früheren Export desselben Auszugs nur wiederverwenden, wenn Taxpool sie noch nicht kennt
+            if (alt.EkNummern.TryGetValue(b.Number, out var vorhanden) && EkZahl(vorhanden) is int vn && vn > inTaxpool)
+            {
+                result[b.Number] = vorhanden;
+                continue;
+            }
+            int n = Math.Max(inTaxpool, Settings.EkLetzteNummer.GetValueOrDefault(jahr)) + 1;
+            Settings.EkLetzteNummer[jahr] = n;
+            result[b.Number] = $"{Settings.EkBelegkreis} {n}".Trim();
+        }
+        return result;
+    }
+
+    private static int? EkZahl(string ek) =>
+        System.Text.RegularExpressions.Regex.Match(ek, @"(\d+)\s*$") is { Success: true } m ? int.Parse(m.Groups[1].Value) : null;
 
     // ---------------------------------------------------------------------------------------------
     // Sollstellung der Ausgangsrechnungen (eigener Teil, eigener Status)

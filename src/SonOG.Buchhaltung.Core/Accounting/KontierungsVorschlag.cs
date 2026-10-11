@@ -112,7 +112,7 @@ public sealed class KontierungsVorschlag
                 RechnungEinbuchen = true,
                 Quelle = KontierungsQuelle.Regel,
                 Hinweis = "Standardkonto von " + person + " (erkannt über " + personTreffer!.Grund + ")",
-                Zeilen = { new KontierungsZeile { Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Rechnungsnummer = Rechnungsnummer.Aus(b), Text = text } },
+                Zeilen = { new KontierungsZeile { Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Rechnungsnummer = Rechnungsnummer.Aus(b, person), Text = text } },
             };
         }
 
@@ -145,7 +145,7 @@ public sealed class KontierungsVorschlag
 
     private KontierungsZeile KundenZeile(PersonAccount person, Booking b, decimal betrag, string text)
     {
-        var nr = b.OwnInvoiceNumbers.FirstOrDefault() ?? Rechnungsnummer.Aus(b);
+        var nr = b.OwnInvoiceNumbers.FirstOrDefault() ?? Rechnungsnummer.Aus(b, person);
         return new KontierungsZeile { Betrag = betrag, Rechnungsnummer = nr, Text = KundenText(_s, person.Konto, nr, b.Text) ?? text };
     }
 
@@ -186,7 +186,7 @@ public sealed class KontierungsVorschlag
         }
 
         // Rechnungsnummer: endet der Vorlagentext auf "Re-Nr.:", wird sie angehängt; außerdem Belegfeld 2
-        var reNr = Rechnungsnummer.Aus(b);
+        var reNr = Rechnungsnummer.Aus(b, personKonto is int pkr ? _dir.Get(pkr) : null);
         var text = regel.Buchungstext.Trim().Length > 0 ? Rechnungsnummer.Einsetzen(regel.Buchungstext.Trim(), reNr) : Kurztext(b);
         var k = new Kontierung
         {

@@ -118,11 +118,16 @@ public sealed class AccountingSettings
     public string SollstellungBuSchluessel { get; set; } = "";
 
     /// <summary>
-    /// Beim Ausgleich offener Posten (Zahlung auf ein Personenkonto mit Rechnungsnummer) steht die Rechnungsnummer
-    /// in Belegfeld 1 (dort sucht die Buchhaltung den offenen Posten) und die laufende Nummer in Belegfeld 2.
-    /// Sonst steht die laufende Nummer immer in Belegfeld 1.
+    /// Rechnungsnummer des Geschäftspartners zusätzlich in Belegfeld 2 schreiben. Standard: nein - Belegfeld 1 trägt
+    /// die laufende Nummer der Bankbuchung (bzw. die EK-Nummer der Eingangsrechnung), die Rechnungsnummer steht im Text.
     /// </summary>
-    public bool RechnungsnummerInBelegfeld1BeiAusgleich { get; set; } = true;
+    public bool Belegfeld2Rechnungsnummer { get; set; }
+
+    /// <summary>Belegnummernkreis der Eingangsrechnungen in Taxpool (Belegfeld 1 der Buchung Sachkonto an Lieferant).</summary>
+    public string EkBelegkreis { get; set; } = "EK-RE-DB";
+
+    /// <summary>Zuletzt vergebene EK-Nummer je Jahr (aus Taxpool gelesen und vom Tool weitergezählt; der Kreis beginnt jährlich neu).</summary>
+    public Dictionary<int, int> EkLetzteNummer { get; set; } = new();
 
     /// <summary>Herkunftskennzeichen im DATEV-Kopf (2 Zeichen).</summary>
     public string Herkunft { get; set; } = "RE";

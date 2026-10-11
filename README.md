@@ -125,6 +125,17 @@ Windows-1252) in den Ausgabeordner, dazu `Personenkonten_….csv` mit den verwen
 Die Nummern sind in Schritt 1 endgültig vergeben (Export). Bei Fehlern wird keine Datei geschrieben; ein zweiter Export
 desselben Auszugs wird gewarnt (doppelter Import). Die Buchungen werden nicht festgeschrieben.
 
+**Belegnummern in der Importdatei:** Belegfeld 1 trägt die laufende Nummer der Bankbuchung; die Einbuchung einer
+Eingangsrechnung (Sachkonto an Lieferant) bekommt eine eigene Nummer aus dem Taxpool-Kreis der Eingangsrechnungen
+(`EK-RE-DB 400`, jährlich neu). Vor jedem Export liest das Tool den aktuellen Stand aus der gemerkten Taxpool-Datei und
+zählt ab dem höheren Wert aus Taxpool und eigener Vergabe weiter; ein erneuter Export desselben Auszugs nutzt dieselben
+Nummern, solange Taxpool sie noch nicht kennt. Hinweis: die Datensicherung enthält nur, was bis zu ihrer Erstellung
+erfasst war. Belegfeld 2 bleibt leer (`belegfeld2Rechnungsnummer` in buchhaltung.json schaltet die Rechnungsnummer dort ein).
+
+**Rechnungsnummer im Buchungstext:** Endet der Vorlagentext auf „Re-Nr.:“, wird die Nummer angehängt – mit Kennwort
+im Verwendungszweck (`RE`, `RG`, `Rechnung`, `INV`) oder, ohne Kennwort, als Zahl in der Form, die das Tool je Partner aus
+den Taxpool-Buchungstexten gelernt hat (z. B. 9 Ziffern mit Jahr vorne).
+
 ## Sollstellung der Ausgangsrechnungen
 
 Eigener Reiter, unabhängig vom Kontoauszug: Monat wählen, **Rechnungen laden** (CAO-Ordner aus Schritt 1). Jede Rechnung

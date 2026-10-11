@@ -83,6 +83,28 @@ public static class TaxpoolVorlagenImport
         if (standard > 0)
             e.Hinweise.Add($"Für {standard} Personenkonten das übliche Gegenkonto aus den Taxpool-Buchungen als Standard-Sachkonto übernommen.");
 
+        // Form der Rechnungsnummern je Personenkonto (für das Finden im Kontoauszug ohne "RE" davor)
+        int formen = 0;
+        foreach (var p in dir.Konten)
+        {
+            if (!d.Rechnungsnummern.TryGetValue(p.Konto, out var bsp) || bsp.Count == 0) { p.RechnungsnummerFormen = null; continue; }
+            p.RechnungsnummerFormen = Rechnungsnummer.Formen(bsp);
+            if (p.RechnungsnummerFormen.Count > 0) formen++;
+        }
+        if (formen > 0) e.Hinweise.Add($"Für {formen} Personenkonten die Form der Rechnungsnummern aus den Taxpool-Buchungstexten gelernt.");
+
+        // EK-Belegnummern: Kreis und letzten Stand je Jahr übernehmen (das Tool zählt beim Export weiter)
+        if (d.EkKreise.Count > 0)
+        {
+            var kreis = d.EkKreise.OrderByDescending(k => k.Value).First().Key;
+            s.EkBelegkreis = kreis;
+            foreach (var ((_, ekJahr), max) in d.EkMax.Where(x => x.Key.Kreis == kreis))
+                if (max > s.EkLetzteNummer.GetValueOrDefault(ekJahr)) s.EkLetzteNummer[ekJahr] = max;
+            var letztesJahr = s.EkLetzteNummer.Keys.DefaultIfEmpty(0).Max();
+            if (letztesJahr > 0)
+                e.Hinweise.Add($"Eingangsrechnungen: zuletzt {kreis} {s.EkLetzteNummer[letztesJahr]} ({letztesJahr}), das Tool vergibt ab {kreis} {s.EkLetzteNummer[letztesJahr] + 1}.");
+        }
+
         // ------------------------------------------------------------- Vorlagen
         var sichtbar = d.Vorlagen.Where(v => v.Anzeigen && (v.BisJahr <= 0 || v.BisJahr >= aktJahr)).ToList();
         int ausgeblendet = d.Vorlagen.Count - sichtbar.Count;

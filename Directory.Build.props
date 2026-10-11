@@ -14,7 +14,7 @@
   -->
   <PropertyGroup>
     <VersionPrefix>1.0</VersionPrefix>
-    <BuildNummer>14</BuildNummer>
+    <BuildNummer>15</BuildNummer>
     <Version>$(VersionPrefix).$(BuildNummer)</Version>
     <FileVersion>$(VersionPrefix).$(BuildNummer).0</FileVersion>
     <AssemblyVersion>$(VersionPrefix).$(BuildNummer).0</AssemblyVersion>

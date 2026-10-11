@@ -30,6 +30,13 @@ public sealed class PersonAccount
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool StandardAusTaxpool { get; set; }
 
+    /// <summary>
+    /// Form der Rechnungsnummern dieses Partners, aus den Taxpool-Buchungstexten gelernt (z. B. "J9" = 9 Ziffern mit Jahr
+    /// vorne, "D5" = 5 Ziffern, "A2D6" = 2 Buchstaben + 6 Ziffern). Damit wird die Nummer im Kontoauszug auch ohne "RE" davor gefunden.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? RechnungsnummerFormen { get; set; }
+
     /// <summary>Anzahl Buchungen auf dem Konto in den letzten beiden Jahren laut Taxpool (entscheidet bei gleichnamigen Konten).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public int Nutzung { get; set; }

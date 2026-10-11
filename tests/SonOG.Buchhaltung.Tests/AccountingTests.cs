@@ -162,7 +162,7 @@ public class AccountingTests
     }
 
     [Fact]
-    public void Customer_payment_clears_open_items_with_invoice_number_in_belegfeld1()
+    public void Customer_payment_clears_open_items_with_bank_number_in_belegfeld1()
     {
         var s = Settings();
         var b = Customer(300m, Inv("202634001", 100m), Inv("202634002", 200m));
@@ -170,13 +170,11 @@ public class AccountingTests
         var rows = Buchungssaetze.AusKontoauszug(b, s);
         Assert.Equal(2, rows.Count);
         Assert.All(rows, r => Assert.Equal((1200, 'S', 10001), (r.Konto, r.SollHaben, r.Gegenkonto)));
-        Assert.Equal("202634001", rows[0].Belegfeld1);
-        Assert.Equal("2026-0050", rows[0].Belegfeld2);
+        Assert.All(rows, r => Assert.Equal(("2026-0050", ""), (r.Belegfeld1, r.Belegfeld2))); // Belegfeld 2 wird nicht benutzt
 
-        s.RechnungsnummerInBelegfeld1BeiAusgleich = false;
+        s.Belegfeld2Rechnungsnummer = true;
         rows = Buchungssaetze.AusKontoauszug(b, s);
-        Assert.Equal("2026-0050", rows[0].Belegfeld1);
-        Assert.Equal("202634001", rows[0].Belegfeld2);
+        Assert.Equal(("2026-0050", "202634001"), (rows[0].Belegfeld1, rows[0].Belegfeld2));
     }
 
     [Fact]
@@ -278,7 +276,7 @@ public class AccountingTests
     [Fact]
     public void Belegfeld_removes_forbidden_characters()
     {
-        Assert.Equal("RE2026/01-A", DatevBuchungsstapel.Belegfeld("RE 2026/01-A.", 36));
+        Assert.Equal("EK-RE-DB 400", DatevBuchungsstapel.Belegfeld("EK-RE-DB 400.", 36)); // Leerzeichen wie in Taxpool erlaubt
         Assert.Equal("123456789012", DatevBuchungsstapel.Belegfeld("1234567890123", 12));
     }
 

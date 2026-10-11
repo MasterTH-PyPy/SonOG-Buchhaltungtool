@@ -77,7 +77,9 @@ public static class Buchungssaetze
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>Buchungssätze einer Kontoauszugsbuchung (ohne Prüfung).</summary>
-    public static List<DatevBuchung> AusKontoauszug(Booking b, AccountingSettings s)
+    /// <param name="ekNummer">Belegnummer der Eingangsrechnung (z. B. "EK-RE-DB 400") für die Einbuchung auf dem Lieferanten;
+    /// null = laufende Nummer der Bankbuchung. Die Zahlung trägt immer die laufende Nummer.</param>
+    public static List<DatevBuchung> AusKontoauszug(Booking b, AccountingSettings s, string? ekNummer = null)
     {
         var k = b.Kontierung ?? throw new InvalidOperationException($"Buchung {b.Number} ist nicht kontiert.");
         var list = new List<DatevBuchung>();
@@ -99,7 +101,7 @@ public static class Buchungssaetze
                     BuSchluessel = z.BuSchluessel,
                     Belegdatum = b.Date,
                     Belegfeld1 = b.Number,
-                    Belegfeld2 = z.Rechnungsnummer,
+                    Belegfeld2 = s.Belegfeld2Rechnungsnummer ? z.Rechnungsnummer : "",
                     Buchungstext = z.Text,
                 });
             }
@@ -121,8 +123,8 @@ public static class Buchungssaetze
                     Gegenkonto = z.Sachkonto,
                     BuSchluessel = z.BuSchluessel,
                     Belegdatum = datum,
-                    Belegfeld1 = b.Number,
-                    Belegfeld2 = z.Rechnungsnummer,
+                    Belegfeld1 = ekNummer ?? b.Number,
+                    Belegfeld2 = s.Belegfeld2Rechnungsnummer ? z.Rechnungsnummer : "",
                     Buchungstext = z.Text,
                 });
             }
@@ -136,7 +138,7 @@ public static class Buchungssaetze
                 Gegenkonto = person,
                 Belegdatum = b.Date,
                 Belegfeld1 = b.Number,
-                Belegfeld2 = k.Zeilen.Count == 1 ? k.Zeilen[0].Rechnungsnummer : "",
+                Belegfeld2 = s.Belegfeld2Rechnungsnummer && k.Zeilen.Count == 1 ? k.Zeilen[0].Rechnungsnummer : "",
                 Buchungstext = KontierungsVorschlag.Cut("Zahlung " + text),
             });
             return list;
@@ -146,7 +148,6 @@ public static class Buchungssaetze
         foreach (var z in k.Zeilen)
         {
             var eff = vorzeichen * z.Betrag;
-            bool reInBf1 = s.RechnungsnummerInBelegfeld1BeiAusgleich && z.Rechnungsnummer.Length > 0;
             list.Add(new DatevBuchung
             {
                 Umsatz = Math.Abs(z.Betrag),
@@ -154,8 +155,8 @@ public static class Buchungssaetze
                 Konto = bank,
                 Gegenkonto = person,
                 Belegdatum = b.Date,
-                Belegfeld1 = reInBf1 ? z.Rechnungsnummer : b.Number,
-                Belegfeld2 = reInBf1 ? b.Number : z.Rechnungsnummer,
+                Belegfeld1 = b.Number,
+                Belegfeld2 = s.Belegfeld2Rechnungsnummer ? z.Rechnungsnummer : "",
                 Buchungstext = z.Text,
             });
         }

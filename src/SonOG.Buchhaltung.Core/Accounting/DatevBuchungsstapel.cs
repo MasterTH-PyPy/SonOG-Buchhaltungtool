@@ -76,7 +76,8 @@ public static class DatevBuchungsstapel
         "EU-Land u. UStID (Ursprung)", "EU-Steuersatz (Ursprung)", "Abw. Skontokonto",
     };
 
-    private static readonly Regex BelegfeldErlaubt = new(@"[^A-Za-z0-9$&%*+\-/]", RegexOptions.Compiled);
+    // Leerzeichen erlaubt, weil Taxpool seine Belegnummern so führt ("EK-RE-DB 400", "Bank_01 13173")
+    private static readonly Regex BelegfeldErlaubt = new(@"[^A-Za-z0-9$&%*+\-/_ ]", RegexOptions.Compiled);
 
     public static Encoding Ansi
     {

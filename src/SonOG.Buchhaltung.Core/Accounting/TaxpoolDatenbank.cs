@@ -446,6 +446,22 @@ public static class TaxpoolDatenbank
         int iSoll = Erstes(t, "SOLLKONTO_NUMMER_SICHERUNG", "Soll-Kontonr.", "SOLLKONTO_NUMMER");
         int iHaben = Erstes(t, "HABENKONTO_NUMMER_SICHERUNG", "Haben-Kontonr.", "HABENKONTO_NUMMER");
         int iStorno = t.Index("STORNO"), iDatum = t.Index("BELEGDATUM"), iBetrag = t.Index("BRUTTO_BETRAG");
+        int iKreis = t.Index("BELEGNUMMER_TEXT"), iBelegNr = t.Index("BELEGNUMMER"), iText = t.Index("BUCHUNGSTEXT");
+
+        // Höchste Nummer je Jahr im Eingangsrechnungs-Kreis ("EK-RE-DB 399")
+        if (iKreis >= 0 && iBelegNr >= 0)
+            foreach (var z in t.Zeilen)
+            {
+                var kreis = TaxpoolTabelle.Wert(z, iKreis).Trim();
+                if (!kreis.StartsWith("EK", StringComparison.OrdinalIgnoreCase)) continue;
+                var nrText = TaxpoolTabelle.Wert(z, iBelegNr).Trim();
+                var m = Regex.Match(nrText, @"(\d+)\s*$");
+                int? jahrEk = Datum(TaxpoolTabelle.Wert(z, iDatum))?.Year;
+                if (!m.Success || jahrEk is null) continue;
+                int n = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+                d.EkKreise[kreis] = d.EkKreise.GetValueOrDefault(kreis) + 1;
+                if (!d.EkMax.TryGetValue((kreis, jahrEk.Value), out var alt) || n > alt) d.EkMax[(kreis, jahrEk.Value)] = n;
+            }
         if (iSoll < 0 || iHaben < 0) return;
 
         var paare = new List<(int Soll, int Haben, int Jahr)>();
@@ -465,6 +481,25 @@ public static class TaxpoolDatenbank
             d.KontoNutzung[soll] = d.KontoNutzung.GetValueOrDefault(soll) + 1;
             d.KontoNutzung[haben] = d.KontoNutzung.GetValueOrDefault(haben) + 1;
         }
+        // Rechnungsnummern je Personenkonto aus Texten wie "IP-Projects GmbH Re-Nr.: 202606585" (letzte drei Jahre)
+        if (iText >= 0)
+            foreach (var z in t.Zeilen)
+            {
+                if (TaxpoolTabelle.Wert(z, iStorno) == "1") continue;
+                int jahr = Datum(TaxpoolTabelle.Wert(z, iDatum))?.Year ?? 0;
+                if (jahr != 0 && jahr <= bisJahr - 3) continue;
+                var m = NummerNachPlatzhalter.Match(TaxpoolTabelle.Wert(z, iText));
+                if (!m.Success) continue;
+                var nr = m.Groups[1].Value.Trim('.', '-', '/');
+                if (!nr.Any(char.IsDigit)) continue;
+                foreach (var konto in new[] { Ganz(TaxpoolTabelle.Wert(z, iSoll), 0), Ganz(TaxpoolTabelle.Wert(z, iHaben), 0) })
+                {
+                    if (konto < 10000) continue; // nur Personenkonten (5-stellig)
+                    if (!d.Rechnungsnummern.TryGetValue(konto, out var l)) d.Rechnungsnummern[konto] = l = new List<(string, int)>();
+                    l.Add((nr, jahr));
+                }
+            }
+
         foreach (var (soll, haben, jahr) in paare.Where(p => p.Jahr == 0 || p.Jahr > bisJahr - 3))
         {
             void Zaehle(int person, int gegen)
@@ -476,6 +511,9 @@ public static class TaxpoolDatenbank
             Zaehle(haben, soll);
         }
     }
+
+    private static readonly Regex NummerNachPlatzhalter =
+        new(@"(?:\bRe|\bBeleg|\bRechnungs?|\bRg)[\s\.\-]*Nr[\s\.:]*\s*([A-Za-z0-9][A-Za-z0-9\-/\.]{2,})\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static int Erstes(TaxpoolTabelle t, params string[] namen)
     {
@@ -561,6 +599,15 @@ public sealed class TaxpoolDaten
 
     /// <summary>Anzahl Buchungen je Konto in den letzten beiden Jahren mit Buchungen (aus der Buchungstabelle).</summary>
     public Dictionary<int, int> KontoNutzung { get; } = new();
+
+    /// <summary>Rechnungsnummern je Personenkonto aus den Buchungstexten (mit Jahr der Buchung), letzte drei Jahre.</summary>
+    public Dictionary<int, List<(string Nummer, int Jahr)>> Rechnungsnummern { get; } = new();
+
+    /// <summary>Belegnummernkreise der Eingangsrechnungen (Name → Anzahl Buchungen), z. B. "EK-RE-DB".</summary>
+    public Dictionary<string, int> EkKreise { get; } = new();
+
+    /// <summary>Höchste vergebene Nummer je (Kreis, Jahr).</summary>
+    public Dictionary<(string Kreis, int Jahr), int> EkMax { get; } = new();
 
     /// <summary>Konto → (Gegenkonto → Anzahl gemeinsamer Buchungen), letzte drei Jahre.</summary>
     public Dictionary<int, Dictionary<int, int>> Gegenkonten { get; } = new();

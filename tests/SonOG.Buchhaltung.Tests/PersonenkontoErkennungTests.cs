@@ -182,7 +182,7 @@ public class RechnungsnummerTests
     }
 
     [Fact]
-    public void Template_text_gets_number_and_belegfeld2()
+    public void Template_text_gets_number()
     {
         var s = new AccountingSettings { Regeln = new() };
         var dir = new PersonAccountDirectory();
@@ -195,6 +195,34 @@ public class RechnungsnummerTests
         var z = b.Kontierung.Zeilen.Single();
         Assert.Equal(("ADN Re-Nr.: 1026190417", "1026190417", 4964), (z.Text, z.Rechnungsnummer, z.Sachkonto));
         var rows = Buchungssaetze.AusKontoauszug(b, s);
-        Assert.Equal(("ADN Re-Nr.: 1026190417", "2026-0047", "1026190417"), (rows[0].Buchungstext, rows[0].Belegfeld1, rows[0].Belegfeld2));
+        Assert.Equal(("ADN Re-Nr.: 1026190417", "2026-0047", ""), (rows[0].Buchungstext, rows[0].Belegfeld1, rows[0].Belegfeld2));
+        // mit EK-Nummer: Einbuchung trägt sie, die Zahlung die Bankbuchungsnummer
+        rows = Buchungssaetze.AusKontoauszug(b, s, "EK-RE-DB 400");
+        Assert.Equal(("EK-RE-DB 400", "2026-0047"), (rows[0].Belegfeld1, rows[1].Belegfeld1));
+    }
+}
+
+public class RechnungsnummerFormTests
+{
+    [Theory]
+    [InlineData("202606585", 2026, "J9")]
+    [InlineData("202606585", 2025, "D9")]
+    [InlineData("30804", 2026, "D5")]
+    [InlineData("DE66OD6DABEI", 2026, "A2D2A2D1A5")]
+    [InlineData("2026-123456", 2026, "J4~-D6")]
+    public void Form_of_number(string nr, int jahr, string form) => Assert.Equal(form, Rechnungsnummer.Form(nr, jahr));
+
+    [Fact]
+    public void Learned_shape_finds_number_without_keyword()
+    {
+        var formen = Rechnungsnummer.Formen(new[] { ("202606585", 2026), ("202600366", 2026), ("202400849", 2024), ("30804", 2020) });
+        Assert.Equal("J9", formen[0]);
+        var lieferant = new PersonAccount { Konto = 70006, Name = "Beispiel Hosting GmbH", Art = PersonenArt.Kreditor, RechnungsnummerFormen = formen };
+        var b = new Booking { Date = new DateOnly(2026, 9, 3), Amount = -2116.42m, Number = "2026-0003",
+            Text = "Beispiel Hosting GmbH 202609123 KDNR 12345 SEPA-BASISLASTSCHRIFT MREF M-12345" };
+        Assert.Equal("202609123", Rechnungsnummer.Aus(b, lieferant));
+        Assert.Equal("", Rechnungsnummer.Aus(b));                                    // ohne gelernte Form kein Treffer
+        b = new Booking { Date = new DateOnly(2026, 9, 3), Amount = -10m, Number = "2026-0004", Text = "Beispiel Hosting GmbH Mandat 20200101 Kunde 12345" };
+        Assert.Equal("", Rechnungsnummer.Aus(b, lieferant));                          // andere Form → nichts
     }
 }
