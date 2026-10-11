@@ -122,9 +122,7 @@ public sealed class TaxpoolService
     // ---------------------------------------------------------------------------------------------
 
     /// <param name="nummernEndgueltig">Nummern aus Schritt 1 sind vergeben (Export erfolgt) - sonst stimmen die Belegnummern nicht.</param>
-    /// <param name="ekErste">Erste EK-Belegnummer, wie sie der Anwender bestätigt oder angepasst hat (z. B. "EK-RE-DB 400");
-    /// null = automatisch aus Taxpool-Stand und Zähler.</param>
-    public TaxpoolExportErgebnis ExportKontoauszug(ParsedStatement st, string statementKey, string outputFolder, bool nummernEndgueltig, string? ekErste = null)
+    public TaxpoolExportErgebnis ExportKontoauszug(ParsedStatement st, string statementKey, string outputFolder, bool nummernEndgueltig)
     {
         if (!nummernEndgueltig)
             throw new InvalidOperationException("Die Belegnummern dieses Auszugs sind noch nicht endgültig. Bitte zuerst in Schritt 1 exportieren " +
@@ -138,7 +136,7 @@ public sealed class TaxpoolService
         var path = KontierungStore.PathFor(_dataDir, statementKey);
         var alt = KontierungStore.Load(path);
         var (taxpoolEk, ekHinweis) = EkStandAusTaxpool();
-        var ek = EkNummernVergeben(st, alt, taxpoolEk, ekErste);
+        var ek = EkNummernVergeben(st, alt, taxpoolEk);
 
         var rows = st.Bookings.SelectMany(b => Buchungssaetze.AusKontoauszug(b, Settings, ek.GetValueOrDefault(b.Number))).ToList();
         var name = "Kontoauszug_" + statementKey;
@@ -170,6 +168,7 @@ public sealed class TaxpoolService
         {
             var d = TaxpoolDatenbank.Lesen(path);
             var max = d.EkMax.Where(x => x.Key.Kreis == Settings.EkBelegkreis).ToDictionary(x => x.Key.Jahr, x => x.Value);
+            foreach (var (j, m) in max) Settings.EkTaxpoolStand[j] = m;
             var stand = Stand(path).ToLocalTime();
             return (max, $"EK-Stand geprüft in {Path.GetFileName(path)} (Stand {stand:dd.MM.yyyy HH:mm}; danach in Taxpool erfasste Belege sind dort nicht enthalten)");
         }
@@ -183,34 +182,18 @@ public sealed class TaxpoolService
     /// EK-Belegnummer je Eingangsrechnung (Personenkonto ist ein Lieferant, Beleg wird eingebucht). Schon vergebene
     /// Nummern desselben Auszugs werden wiederverwendet, neue zählen je Jahr ab dem höchsten bekannten Stand weiter.
     /// </summary>
-    private Dictionary<string, string> EkNummernVergeben(ParsedStatement st, KontierungStore alt, Dictionary<int, int> taxpoolMax, string? ekErste = null)
+    private Dictionary<string, string> EkNummernVergeben(ParsedStatement st, KontierungStore alt, Dictionary<int, int> taxpoolMax)
     {
         var result = new Dictionary<string, string>();
         var eingang = st.Bookings.Where(IstEingangsrechnung).ToList();
-
-        // Vom Anwender vorgegebene erste Nummer: alle Eingangsrechnungen des Auszugs fortlaufend ab dort
-        if (!string.IsNullOrWhiteSpace(ekErste))
-        {
-            var m = System.Text.RegularExpressions.Regex.Match(ekErste.Trim(), @"^(.*?)(\d+)$");
-            if (!m.Success) throw new InvalidOperationException($"Die EK-Belegnummer \"{ekErste}\" endet nicht auf eine Zahl.");
-            string praefix = m.Groups[1].Value;
-            int n = int.Parse(m.Groups[2].Value);
-            int stellen = m.Groups[2].Value.StartsWith('0') ? m.Groups[2].Value.Length : 0; // führende Nullen beibehalten
-            foreach (var b in eingang)
-            {
-                result[b.Number] = praefix + n.ToString(new string('0', Math.Max(1, stellen)));
-                Settings.EkLetzteNummer[b.Date.Year] = Math.Max(Settings.EkLetzteNummer.GetValueOrDefault(b.Date.Year), n);
-                n++;
-            }
-            return result;
-        }
-
         foreach (var b in eingang)
         {
             int jahr = b.Date.Year;
             int inTaxpool = taxpoolMax.GetValueOrDefault(jahr);
             // Nummer aus einem früheren Export desselben Auszugs nur wiederverwenden, wenn Taxpool sie noch nicht kennt
-            if (alt.EkNummern.TryGetValue(b.Number, out var vorhanden) && EkZahl(vorhanden) is int vn && vn > inTaxpool)
+            // und sie nicht unter einer von Hand gesetzten nächsten Nummer liegt
+            if (alt.EkNummern.TryGetValue(b.Number, out var vorhanden) && EkZahl(vorhanden) is int vn && vn > inTaxpool &&
+                vn >= Settings.EkAbHand.GetValueOrDefault(jahr))
             {
                 result[b.Number] = vorhanden;
                 continue;
@@ -225,28 +208,14 @@ public sealed class TaxpoolService
     private bool IstEingangsrechnung(Booking b) =>
         b.Kontierung is { RechnungEinbuchen: true, Personenkonto: int pk } && pk >= Settings.KreditorenVon && pk <= Settings.KreditorenBis;
 
-    /// <summary>
-    /// Vorschau für den Export: erste EK-Belegnummer, die vergeben würde, Anzahl der Eingangsrechnungen und Taxpool-Stand.
-    /// Ändert nichts (der Zähler wird erst beim Export fortgeschrieben).
-    /// </summary>
-    public (string? Erste, int Anzahl, string Hinweis) EkVorschau(ParsedStatement st, string statementKey)
+    /// <summary>Nächste EK-Nummer für die Anzeige (Taxpool-Stand des letzten Lesens und Zähler des Tools).</summary>
+    public int EkNaechste(int jahr) => Settings.EkNaechste(jahr);
+
+    /// <summary>Nächste EK-Nummer von Hand setzen und speichern.</summary>
+    public void EkNaechsteSetzen(int jahr, int naechste)
     {
-        int anzahl = st.Bookings.Count(IstEingangsrechnung);
-        if (anzahl == 0) return (null, 0, "");
-        var (taxpoolEk, hinweis) = EkStandAusTaxpool();
-        var gemerkt = new Dictionary<int, int>(Settings.EkLetzteNummer);
-        try
-        {
-            var ek = EkNummernVergeben(st, KontierungStore.Load(KontierungStore.PathFor(_dataDir, statementKey)), taxpoolEk);
-            var jahr = st.Bookings.First(IstEingangsrechnung).Date.Year;
-            var stand = taxpoolEk.TryGetValue(jahr, out var mx) ? $"In Taxpool zuletzt {Settings.EkBelegkreis} {mx} ({jahr}). " : "";
-            return (ek.Values.FirstOrDefault(), anzahl, stand + hinweis);
-        }
-        finally
-        {
-            Settings.EkLetzteNummer.Clear();
-            foreach (var (k, v) in gemerkt) Settings.EkLetzteNummer[k] = v;
-        }
+        Settings.EkNaechsteSetzen(jahr, naechste);
+        SaveSettings();
     }
 
     private static int? EkZahl(string ek) =>

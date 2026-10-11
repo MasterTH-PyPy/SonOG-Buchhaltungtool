@@ -282,6 +282,38 @@ public class AccountingTests
     public void Customer_number_is_read_from_invoice_header(string zeile, string erwartet) =>
         Assert.Equal(erwartet, InvoiceTextParser.KundennummerAus(zeile));
 
+    [Fact]
+    public void Cao_journal_overrides_customer_amount_and_date_from_pdf()
+    {
+        var pdf = new InvoiceRecord("202634020", "j.pdf", 100m, "Rudolf Kasper\nMuster Hausverwaltung\nWeg 1", new DateOnly(2026, 9, 1));
+        var list = new List<InvoiceRecord> { pdf, new("202634021", "k.pdf", 50m, "Beispiel Bau", new DateOnly(2026, 9, 2)) };
+        var cao = new Dictionary<string, CaoRechnung>
+        {
+            ["202634020"] = new("202634020", "10001", "Muster Hausverwaltung", 119m, new DateOnly(2026, 9, 3)),
+        };
+        Assert.Equal(1, CaoAbgleich.Anwenden(list, cao));
+        var r = list[0];
+        Assert.Equal(("10001", 119m, new DateOnly(2026, 9, 3), "Muster Hausverwaltung", true),
+                     (r.Kundennummer, r.GrossAmount, r.Date, r.RecipientFirstLine, r.AusCao));
+        Assert.Equal("Muster Hausverwaltung\nRudolf Kasper\nWeg 1", r.Recipient);
+        Assert.False(list[1].AusCao);
+        Assert.Equal(10001, Sollstellung.KontierungFuer(r, Settings(), Dir()).Personenkonto);
+    }
+
+    [Fact]
+    public void Next_ek_number_respects_taxpool_and_manual_setting()
+    {
+        var s = Settings();
+        s.EkTaxpoolStand[2026] = 399;
+        s.EkLetzteNummer[2026] = 399;
+        Assert.Equal(400, s.EkNaechste(2026));
+        s.EkNaechsteSetzen(2026, 420);   // in Taxpool nach der Sicherung weitergebucht
+        Assert.Equal(420, s.EkNaechste(2026));
+        s.EkNaechsteSetzen(2026, 390);   // unter dem Taxpool-Stand geht nicht (Doppelbelege)
+        Assert.Equal(400, s.EkNaechste(2026));
+        Assert.Equal(1, s.EkNaechste(2027));
+    }
+
     // ------------------------------------------------------------------ DATEV-Datei
 
     [Fact]

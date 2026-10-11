@@ -4,6 +4,9 @@ namespace SonOG.Buchhaltung.Core.Invoices;
 /// <param name="Kundennummer">Kundennummer laut Rechnungskopf - bei SonOG gleich dem Debitorenkonto in Taxpool.</param>
 public sealed record InvoiceRecord(string Number, string FilePath, decimal? GrossAmount, string Recipient, DateOnly? Date, string Kundennummer = "")
 {
+    /// <summary>Kunde, Betrag und Datum stammen aus der CAO-Datenbank (nicht nur aus dem PDF gelesen).</summary>
+    public bool AusCao { get; init; }
+
     /// <summary>Erste nicht leere Zeile des Empfängerblocks (meist der Name).</summary>
     public string RecipientFirstLine =>
         Recipient.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";

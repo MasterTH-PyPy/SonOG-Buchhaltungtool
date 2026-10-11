@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace SonOG.Buchhaltung.Infrastructure;
 
-/// <summary>Zuletzt verwendete Pfade. Es sind keine Zugangsdaten enthalten, deshalb als normale JSON-Datei.</summary>
+/// <summary>Zuletzt verwendete Pfade und Zugänge (Passwörter nur DPAPI-verschlüsselt).</summary>
 public sealed class AppSettings
 {
     public string StatementPath { get; set; } = "";
@@ -21,6 +21,9 @@ public sealed class AppSettings
     public List<MailAccount> MailAccounts { get; set; } = new();
 
     public bool FetchMail { get; set; }
+
+    /// <summary>CAO-Faktura-Datenbank: Kunde, Betrag und Datum der Ausgangsrechnungen über die Rechnungsnummer.</summary>
+    public CaoVerbindung Cao { get; set; } = new();
 
     /// <summary>Erste Belegnummer (der Zähler wird mindestens auf diesen Wert gesetzt), damit es keine Überschneidungen gibt.</summary>
     public int NumberFrom { get; set; } = 1;

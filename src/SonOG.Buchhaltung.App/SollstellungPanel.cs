@@ -123,6 +123,7 @@ internal sealed class SollstellungPanel : UserControl
             var progress = new Progress<string>(_status);
             _index = await Task.Run(() => _service.ScanInvoices(folder, progress));
             Vorbereiten();
+            if (_service.LetzterCaoHinweis.Length > 0) _status(_service.LetzterCaoHinweis);
         }
         catch (Exception ex)
         {

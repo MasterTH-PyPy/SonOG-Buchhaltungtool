@@ -13,8 +13,8 @@
     Ist Git verfügbar, kommt der Commit-Kurzhash dazu, und "+lokal", wenn nicht eingecheckte Änderungen enthalten sind.
   -->
   <PropertyGroup>
-    <VersionPrefix>1.0</VersionPrefix>
-    <BuildNummer>19</BuildNummer>
+    <VersionPrefix>1.1</VersionPrefix>
+    <BuildNummer>20</BuildNummer>
     <Version>$(VersionPrefix).$(BuildNummer)</Version>
     <FileVersion>$(VersionPrefix).$(BuildNummer).0</FileVersion>
     <AssemblyVersion>$(VersionPrefix).$(BuildNummer).0</AssemblyVersion>

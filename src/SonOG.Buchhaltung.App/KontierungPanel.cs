@@ -7,7 +7,7 @@ using SonOG.Buchhaltung.Infrastructure;
 namespace SonOG.Buchhaltung.App;
 
 /// <summary>
-/// Schritt 2 (Kontieren: Personenkonto, Sachkonten, Splitbuchungen) und Schritt 3 (Importdatei für Taxpool).
+/// Schritt 3 (Kontieren: Personenkonto, Sachkonten, Splitbuchungen) und Schritt 4 (Importdatei für Taxpool).
 /// Jede Änderung wird sofort gespeichert und beim nächsten Einlesen desselben Auszugs wiederhergestellt.
 /// </summary>
 internal sealed class KontierungPanel : UserControl
@@ -30,7 +30,11 @@ internal sealed class KontierungPanel : UserControl
     private readonly Button _btnPersonen = new() { Text = "Personenkonten ...", AutoSize = true };
     private readonly Button _btnImport = new() { Text = "Aus Taxpool lesen ...", AutoSize = true };
     private readonly Button _btnEinstellungen = new() { Text = "Einstellungen / Regeln öffnen", AutoSize = true };
-    private readonly Button _btnExport = new() { Text = "3 · Taxpool-Importdatei erzeugen ...", AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
+    private readonly Label _lblEk = new() { AutoSize = true, Margin = new Padding(24, 8, 3, 3) };
+    private readonly NumericUpDown _numEk = new() { Minimum = 1, Maximum = 999999, Width = 80, Margin = new Padding(3, 4, 3, 3) };
+    private readonly Label _lblEkInfo = new() { AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(3, 8, 3, 3) };
+    private bool _ekFuellen;
+    private readonly Button _btnExport = new() { Text = "4 · Taxpool-Importdatei erzeugen ...", AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont, FontStyle.Bold) };
     private readonly Label _lblInfo = new() { AutoSize = true, Margin = new Padding(12, 8, 3, 3), ForeColor = Color.DimGray };
 
     // Editor
@@ -69,7 +73,7 @@ internal sealed class KontierungPanel : UserControl
     private void BuildLayout()
     {
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
-        top.Controls.AddRange(new Control[] { _btnNeu, _btnPersonen, _btnImport, _btnEinstellungen, _chkOffen, _btnExport, _lblInfo });
+        top.Controls.AddRange(new Control[] { _btnNeu, _btnPersonen, _btnImport, _btnEinstellungen, _chkOffen, _lblEk, _numEk, _lblEkInfo, _btnExport, _lblInfo });
         _btnExport.Margin = new Padding(24, 3, 3, 3);
 
         _list.Dock = DockStyle.Fill;
@@ -170,6 +174,12 @@ internal sealed class KontierungPanel : UserControl
     {
         _list.SelectionChanged += (_, _) => ShowEditor();
         _chkOffen.CheckedChanged += (_, _) => RefreshList();
+        _numEk.ValueChanged += (_, _) =>
+        {
+            if (_ekFuellen) return;
+            Tp.EkNaechsteSetzen(EkJahr, (int)_numEk.Value);
+            EkAnzeigen();
+        };
         _btnNeu.Click += (_, _) => OnNeuVorschlagen();
         _btnPersonen.Click += (_, _) => OnPersonen();
         _btnImport.Click += (_, _) => OnImport();
@@ -244,6 +254,31 @@ internal sealed class KontierungPanel : UserControl
         }
         FillCombos();
         RefreshList();
+        EkAnzeigen();
+    }
+
+    /// <summary>Jahr der EK-Nummern: Jahr des Kontoauszugs, sonst das laufende Jahr (der Kreis beginnt jährlich neu).</summary>
+    private int EkJahr => _session?.Statement.Bookings.FirstOrDefault()?.Date.Year ?? DateTime.Today.Year;
+
+    /// <summary>Nächste EK-Belegnummer anzeigen; von Hand änderbar (z. B. wenn in Taxpool seit der Sicherung weitergebucht wurde).</summary>
+    private void EkAnzeigen()
+    {
+        var s = Tp.Settings;
+        int jahr = EkJahr;
+        int naechste = s.EkNaechste(jahr);
+        _ekFuellen = true;
+        try
+        {
+            _lblEk.Text = $"Nächste {s.EkBelegkreis} ({jahr}):";
+            // eine niedrigere Eingabe stehen lassen, damit man sieht, was eingegeben wurde
+            if ((int)_numEk.Value != naechste && !_numEk.Focused) _numEk.Value = Math.Clamp(naechste, 1, 999999);
+        }
+        finally { _ekFuellen = false; }
+        int tp = s.EkTaxpoolStand.GetValueOrDefault(jahr);
+        _lblEkInfo.Text = (int)_numEk.Value < naechste
+            ? $"Taxpool hat schon bis {tp} - vergeben wird ab {naechste}"
+            : tp > 0 ? $"(Taxpool bis {tp})" : "";
+        _lblEkInfo.ForeColor = (int)_numEk.Value < naechste ? Color.Firebrick : Color.DimGray;
     }
 
     private Booking? Current => _list.CurrentRow?.Tag as Booking;
@@ -829,6 +864,7 @@ internal sealed class KontierungPanel : UserControl
         {
             var results = Tp.ImportTaxpool(dlg.FileNames);
             FillCombos();
+            EkAnzeigen();
             if (_session is not null)
             {
                 Tp.NeuVorschlagen(_session.Statement);
@@ -895,28 +931,9 @@ internal sealed class KontierungPanel : UserControl
             if (MessageBox.Show(this, q, "Taxpool-Importdatei", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         }
 
-        // Erste EK-Belegnummer zeigen und anpassbar machen (Taxpool-Stand kann seit der Sicherung weitergelaufen sein)
-        string? ekErste = null;
         try
         {
-            var (erste, anzahl, ekHinweis) = Tp.EkVorschau(_session.Statement, _session.StatementKey);
-            if (anzahl > 0)
-            {
-                var label = $"{anzahl} Eingangsrechnung(en) bekommen fortlaufende EK-Belegnummern.\n{ekHinweis}\n\n" +
-                            "Erste Belegnummer (bei Bedarf anpassen, z. B. wenn in Taxpool inzwischen weitergebucht wurde):";
-                ekErste = Prompt.Ask(this, "EK-Belegnummer", label, erste ?? "");
-                if (ekErste is null) return;
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, "Taxpool-Importdatei", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
-        try
-        {
-            var r = Tp.ExportKontoauszug(_session.Statement, _session.StatementKey, output, _service.NummernEndgueltig(_session), ekErste);
+            var r = Tp.ExportKontoauszug(_session.Statement, _session.StatementKey, output, _service.NummernEndgueltig(_session));
             var hinweise = r.Hinweise.Where(h => h.Stufe == PruefStufe.Hinweis).ToList();
             var msg = $"Fertig: {r.Buchungssaetze} Buchungssätze aus {r.Belege} Kontoauszugsbuchungen.\n\n" +
                       $"Importdatei: {Path.GetFileName(r.Datei)}\n" +
@@ -927,6 +944,7 @@ internal sealed class KontierungPanel : UserControl
                       "\n\nAusgabeordner öffnen?";
             _status($"Taxpool-Importdatei erzeugt: {Path.GetFileName(r.Datei)}");
             RefreshList();
+            EkAnzeigen();
             if (MessageBox.Show(this, msg, "Taxpool-Importdatei", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(output) { UseShellExecute = true });
         }

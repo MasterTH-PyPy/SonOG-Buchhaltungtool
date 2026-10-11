@@ -129,6 +129,22 @@ public sealed class AccountingSettings
     /// <summary>Zuletzt vergebene EK-Nummer je Jahr (aus Taxpool gelesen und vom Tool weitergezählt; der Kreis beginnt jährlich neu).</summary>
     public Dictionary<int, int> EkLetzteNummer { get; set; } = new();
 
+    /// <summary>Höchste EK-Nummer je Jahr in der Taxpool-Datei (Stand des letzten Lesens).</summary>
+    public Dictionary<int, int> EkTaxpoolStand { get; set; } = new();
+
+    /// <summary>Nächste EK-Nummer des Jahres: über dem Taxpool-Stand und über dem Zähler des Tools.</summary>
+    public int EkNaechste(int jahr) => Math.Max(EkTaxpoolStand.GetValueOrDefault(jahr), EkLetzteNummer.GetValueOrDefault(jahr)) + 1;
+
+    /// <summary>Nächste EK-Nummer von Hand setzen (z. B. wenn in Taxpool seit der Sicherung weitergebucht wurde).</summary>
+    public void EkNaechsteSetzen(int jahr, int naechste)
+    {
+        EkLetzteNummer[jahr] = Math.Max(0, naechste - 1);
+        EkAbHand[jahr] = naechste;
+    }
+
+    /// <summary>Von Hand gesetzte nächste EK-Nummer je Jahr: kleinere, früher vergebene Nummern werden nicht wiederverwendet.</summary>
+    public Dictionary<int, int> EkAbHand { get; set; } = new();
+
     /// <summary>Herkunftskennzeichen im DATEV-Kopf (2 Zeichen).</summary>
     public string Herkunft { get; set; } = "RE";
 

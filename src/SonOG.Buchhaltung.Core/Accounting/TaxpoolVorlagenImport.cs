@@ -99,7 +99,10 @@ public static class TaxpoolVorlagenImport
             var kreis = d.EkKreise.OrderByDescending(k => k.Value).First().Key;
             s.EkBelegkreis = kreis;
             foreach (var ((_, ekJahr), max) in d.EkMax.Where(x => x.Key.Kreis == kreis))
+            {
+                s.EkTaxpoolStand[ekJahr] = max;
                 if (max > s.EkLetzteNummer.GetValueOrDefault(ekJahr)) s.EkLetzteNummer[ekJahr] = max;
+            }
             var letztesJahr = s.EkLetzteNummer.Keys.DefaultIfEmpty(0).Max();
             if (letztesJahr > 0)
                 e.Hinweise.Add($"Eingangsrechnungen: zuletzt {kreis} {s.EkLetzteNummer[letztesJahr]} ({letztesJahr}), das Tool vergibt ab {kreis} {s.EkLetzteNummer[letztesJahr] + 1}.");

@@ -160,7 +160,7 @@ public sealed class BuchhaltungService
         {
             progress?.Report("Rechnungsordner lesen ...");
             var scan = scanner.ScanInvoices(o.InvoiceFolder, rules, progress, ct);
-            foreach (var r in scan.Items) index.Add(r);
+            foreach (var r in MitCao(scan.Items, warnings, progress)) index.Add(r);
             if (scan.SkippedFiles > 0) warnings.Add($"{scan.SkippedFiles} PDF(s) im Rechnungsordner ohne erkennbare Rechnungsnummer im Dateinamen übersprungen.");
             if (index.Duplicates.Count > 0) warnings.Add($"{index.Duplicates.Count} Rechnungsnummer(n) kommen in mehreren Dateien vor.");
             var unreadable = index.All.Count(i => i.GrossAmount is null);
@@ -291,8 +291,37 @@ public sealed class BuchhaltungService
         var scanner = new DocumentScanner(Path.Combine(_dataDir, "cache"));
         var scan = scanner.ScanInvoices(folder, rules, progress, ct);
         var index = new InvoiceIndex();
-        foreach (var r in scan.Items) index.Add(r);
+        var hinweise = new List<string>();
+        foreach (var r in MitCao(scan.Items, hinweise, progress)) index.Add(r);
+        LetzterCaoHinweis = hinweise.LastOrDefault() ?? "";
         return index;
+    }
+
+    /// <summary>CAO-Faktura-Datenbank (wird von der Oberfläche aus den Einstellungen gesetzt); null oder inaktiv = nur PDFs.</summary>
+    public CaoVerbindung? Cao { get; set; }
+
+    /// <summary>Ergebnis des letzten CAO-Abgleichs beim Einlesen der Ausgangsrechnungen (für die Statuszeile).</summary>
+    public string LetzterCaoHinweis { get; private set; } = "";
+
+    /// <summary>Ergänzt die aus den PDFs gelesenen Rechnungen über die Rechnungsnummer aus der CAO-Tabelle JOURNAL.</summary>
+    private List<InvoiceRecord> MitCao(IEnumerable<InvoiceRecord> rechnungen, List<string> warnings, IProgress<string>? progress)
+    {
+        var list = rechnungen.ToList();
+        if (Cao is not { Eingerichtet: true } cao || list.Count == 0) return list;
+        try
+        {
+            progress?.Report("CAO-Datenbank lesen ...");
+            var daten = CaoDatenbank.Lesen(cao, list.Select(r => r.Number));
+            int n = CaoAbgleich.Anwenden(list, daten);
+            warnings.Add($"CAO-Datenbank: {n} von {list.Count} Rechnung(en) gefunden - Kunde, Betrag und Datum aus dem Journal." +
+                         (n < list.Count ? " Die übrigen nur aus dem PDF gelesen." : ""));
+        }
+        catch (Exception ex) when (ex is MySqlConnector.MySqlException or InvalidOperationException or TimeoutException or
+                                       System.Security.Cryptography.CryptographicException or FormatException)
+        {
+            warnings.Add("CAO-Datenbank nicht erreichbar (" + ex.Message + ") - Rechnungen nur aus den PDFs gelesen.");
+        }
+        return list;
     }
 
     /// <summary>Gibt die Nummern des Auszugs frei, damit er neu nummeriert werden kann.</summary>
