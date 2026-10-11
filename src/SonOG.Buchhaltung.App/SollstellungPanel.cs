@@ -24,7 +24,7 @@ internal sealed class SollstellungPanel : UserControl
     private List<SollstellungsPosten> _posten = new();
     private bool _filling;
 
-    private readonly DateTimePicker _dtMonat = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "MM.yyyy", ShowUpDown = true, Width = 90 };
+    private readonly DateTimePicker _dtMonat = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "MM.yyyy", ShowUpDown = true };
     private readonly Button _btnLaden = new() { Text = "Rechnungen laden", AutoSize = true };
     private readonly Button _btnDebitor = new() { Text = "Debitor anlegen ...", AutoSize = true };
     private readonly Button _btnPersonen = new() { Text = "Personenkonten ...", AutoSize = true };
@@ -50,6 +50,9 @@ internal sealed class SollstellungPanel : UserControl
         _status = status;
         _caoEinstellungen = caoEinstellungen;
         Dock = DockStyle.Fill;
+
+        // Breite nach Schrift und Skalierung, sonst wird "09.2026" bei 125/150 % abgeschnitten
+        _dtMonat.Width = TextRenderer.MeasureText("00.0000", _dtMonat.Font).Width + SystemInformation.VerticalScrollBarWidth + 24;
 
         var last = DateTime.Today.AddMonths(-1);
         _dtMonat.Value = new DateTime(last.Year, last.Month, 1);
