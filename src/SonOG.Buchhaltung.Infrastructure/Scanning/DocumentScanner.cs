@@ -137,7 +137,7 @@ public sealed class DocumentScanner
         {
             var info = new FileInfo(file);
             ReceiptCacheEntry entry;
-            if (cache.TryGetValue(file, out var cached) && cached.Ticks == info.LastWriteTimeUtc.Ticks && cached.Size == info.Length && cached.Version == RechnungsleserVersion)
+            if (cache.TryGetValue(file, out var cached) && cached.Ticks == info.LastWriteTimeUtc.Ticks && cached.Size == info.Length)
             {
                 entry = cached;
             }
