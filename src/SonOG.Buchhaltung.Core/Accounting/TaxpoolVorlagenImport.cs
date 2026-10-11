@@ -273,7 +273,8 @@ public static class TaxpoolVorlagenImport
         Name = Praefix + v.Bezeichnung,
         TaxpoolId = v.Guid.Length > 0 ? v.Guid : "id:" + v.Id,
         Richtung = richtung,
-        Buchungstext = v.Buchungstext,
+        // ohne eigenen Buchungstext: Bezeichnung nehmen, wenn sie auf "Re-Nr.:" o. Ä. endet (dann kommt die Nummer dahinter)
+        Buchungstext = v.Buchungstext.Length > 0 ? v.Buchungstext : Rechnungsnummer.HatPlatzhalter(v.Bezeichnung) ? v.Bezeichnung : "",
     };
 
     /// <summary>BU-Schlüssel: Automatikkonto → keiner; sonst Steuersatz der Vorlage, ersatzweise des Kontos.</summary>

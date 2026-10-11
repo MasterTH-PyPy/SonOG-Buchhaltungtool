@@ -99,7 +99,7 @@ public sealed class KontierungsVorschlag
                 RechnungEinbuchen = true,
                 Quelle = KontierungsQuelle.Regel,
                 Hinweis = "Standardkonto von " + person + " (erkannt über " + personTreffer!.Grund + ")",
-                Zeilen = { new KontierungsZeile { Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Text = text } },
+                Zeilen = { new KontierungsZeile { Betrag = betrag, Sachkonto = person.StandardSachkonto, BuSchluessel = person.StandardBuSchluessel, Rechnungsnummer = Rechnungsnummer.Aus(b), Text = text } },
             };
         }
 
@@ -157,7 +157,9 @@ public sealed class KontierungsVorschlag
             quelle = KontierungsQuelle.Offen;
         }
 
-        var text = regel.Buchungstext.Trim().Length > 0 ? Cut(regel.Buchungstext.Trim()) : Kurztext(b);
+        // Rechnungsnummer: endet der Vorlagentext auf "Re-Nr.:", wird sie angehängt; außerdem Belegfeld 2
+        var reNr = Rechnungsnummer.Aus(b);
+        var text = regel.Buchungstext.Trim().Length > 0 ? Rechnungsnummer.Einsetzen(regel.Buchungstext.Trim(), reNr) : Kurztext(b);
         var k = new Kontierung
         {
             Personenkonto = personKonto,
@@ -184,7 +186,8 @@ public sealed class KontierungsVorschlag
                     Betrag = betrag,
                     Sachkonto = t.Sachkonto,
                     BuSchluessel = t.BuSchluessel,
-                    Text = t.Text.Trim().Length > 0 ? Cut(t.Text) : text,
+                    Rechnungsnummer = reNr,
+                    Text = t.Text.Trim().Length > 0 ? Rechnungsnummer.Einsetzen(t.Text.Trim(), reNr) : text,
                 });
             }
             if (k.Zeilen.Any(z => z.Sachkonto == 0) && k.Quelle != KontierungsQuelle.Offen)
@@ -195,7 +198,7 @@ public sealed class KontierungsVorschlag
             return k;
         }
 
-        k.Zeilen.Add(new KontierungsZeile { Betrag = Math.Abs(b.Amount), Sachkonto = sachkonto, BuSchluessel = bu, Text = text });
+        k.Zeilen.Add(new KontierungsZeile { Betrag = Math.Abs(b.Amount), Sachkonto = sachkonto, BuSchluessel = bu, Rechnungsnummer = reNr, Text = text });
         return k;
     }
 

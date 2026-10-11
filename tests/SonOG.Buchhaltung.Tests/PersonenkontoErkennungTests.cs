@@ -115,3 +115,60 @@ public class PersonenkontoErkennungTests
         Assert.Contains("TOOM", k.Hinweis);
     }
 }
+
+public class RechnungsnummerTests
+{
+    private static Booking B(string text, params string[] belege) => new() { Text = text, ReceiptFiles = belege.ToList(), Amount = -1m };
+
+    [Theory]
+    [InlineData("ADN Bel. v. 11.09.2026 Avis vom 23.09.2026 KD48252 RG1026190417 17", "1026190417")]
+    [InlineData("LIEFERANT GMBH RE-NR.: 69307919 KD 4711", "69307919")]
+    [InlineData("Muster AG Rechnung 2026-0815 vom 01.10.", "2026-0815")]
+    [InlineData("SOFTWARE LTD INVOICE INV-2026-4711", "INV-2026-4711")]
+    [InlineData("REWE SAGT DANKE 12345", "")]          // "RE" am Wortanfang ist keine Rechnung
+    [InlineData("Lastschrift Versicherung", "")]
+    public void Number_from_bank_text(string text, string erwartet) => Assert.Equal(erwartet, Rechnungsnummer.Aus(B(text)));
+
+    [Fact]
+    public void Amazon_invoice_number_from_receipt_file()
+    {
+        Assert.Equal("DE66OD6DABEI", Rechnungsnummer.Aus(B("AMAZON PAYMENTS 305-1234567-1234567", @"C:\Belege\DE66OD6DABEI.pdf")));
+        Assert.Equal("", Rechnungsnummer.Aus(B("AMAZON PAYMENTS 305-1234567-1234567", @"C:\Belege\Bestellübersicht.pdf")));
+    }
+
+    [Theory]
+    [InlineData("ADN Re-Nr.:", "1026190417", "ADN Re-Nr.: 1026190417")]
+    [InlineData("Toom Baumarkt GmbH Beleg-Nr.:", "8402", "Toom Baumarkt GmbH Beleg-Nr.: 8402")]
+    [InlineData("Lieferant Re-Nr..", "77", "Lieferant Re-Nr.. 77")]
+    [InlineData("Lieferant Re.Nr.:", "77", "Lieferant Re.Nr.: 77")]
+    [InlineData("Lieferant Re-Nr:", "77", "Lieferant Re-Nr: 77")]
+    [InlineData("Telefon", "77", "Telefon")]                 // kein Platzhalter → unverändert
+    [InlineData("ADN Re-Nr.:", "", "ADN Re-Nr.:")]           // keine Nummer gefunden → unverändert
+    public void Inserts_number_after_placeholder(string text, string nr, string erwartet) =>
+        Assert.Equal(erwartet, Rechnungsnummer.Einsetzen(text, nr));
+
+    [Fact]
+    public void Long_text_is_shortened_in_front_never_the_number()
+    {
+        var t = Rechnungsnummer.Einsetzen("!!PV!! Heiner Projektgesellschaft mbH & Co. KG Waldstraße Re-Nr.:", "1026190417");
+        Assert.True(t.Length <= 60);
+        Assert.EndsWith(" 1026190417", t);
+    }
+
+    [Fact]
+    public void Template_text_gets_number_and_belegfeld2()
+    {
+        var s = new AccountingSettings { Regeln = new() };
+        var dir = new PersonAccountDirectory();
+        dir.Konten.Add(new PersonAccount { Konto = 70001, Name = "ADN", Art = PersonenArt.Kreditor });
+        s.Regeln.Add(new KontierungsRegel { Name = "Taxpool: ADN", TaxpoolId = "a", Personenkonto = 70001, Sachkonto = 4964, BuSchluessel = "9",
+            Richtung = Richtung.Ausgang, RechnungEinbuchen = true, Buchungstext = "ADN Re-Nr.:" });
+        var b = new Booking { Date = new DateOnly(2026, 9, 28), Amount = -156.13m, Number = "2026-0047", Category = BookingCategory.AusgabeSonstige,
+            Text = "ADN Bel. v. 11.09.2026 Avis vom 23.09.2026 KD48252 RG1026190417 17" };
+        b.Kontierung = new KontierungsVorschlag(s, dir).Vorschlagen(b);
+        var z = b.Kontierung.Zeilen.Single();
+        Assert.Equal(("ADN Re-Nr.: 1026190417", "1026190417", 4964), (z.Text, z.Rechnungsnummer, z.Sachkonto));
+        var rows = Buchungssaetze.AusKontoauszug(b, s);
+        Assert.Equal(("ADN Re-Nr.: 1026190417", "2026-0047", "1026190417"), (rows[0].Buchungstext, rows[0].Belegfeld1, rows[0].Belegfeld2));
+    }
+}
