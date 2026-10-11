@@ -172,6 +172,12 @@ public sealed class AccountingSettings
     /// <summary>Stand der zuletzt gelesenen Taxpool-Datei (Änderungszeit), für das automatische Aktualisieren.</summary>
     public DateTime? TaxpoolDateiStand { get; set; }
 
+    /// <summary>Stand der Einlese-Logik beim letzten Lesen; ist das Tool neuer, wird die Taxpool-Datei einmal neu gelesen.</summary>
+    public int TaxpoolLeseStand { get; set; }
+
+    /// <summary>Erhöhen, wenn das Einlesen aus Taxpool mehr oder anderes übernimmt (dann liest jedes Tool die Datei einmal neu).</summary>
+    public const int AktuellerTaxpoolLeseStand = 2;
+
     [JsonIgnore]
     public int PersonenkontenLaenge => SachkontenLaenge + 1;
 

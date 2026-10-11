@@ -62,6 +62,9 @@ public sealed class TaxpoolService
         {
             var b = st.Bookings[i];
             var saved = store.Find(i, b);
+            // Nur Bestätigtes und von Hand Bearbeitetes wiederherstellen; reine Vorschläge neu berechnen
+            // (das Tool weiß inzwischen vielleicht mehr: neue Regeln, Suchbegriffe, Standardkonten)
+            if (saved is { Bestaetigt: false, Quelle: not KontierungsQuelle.Manuell }) saved = null;
             if (saved is not null) restored++;
             b.Kontierung = saved ?? Vorschlager.Vorschlagen(b);
         }
@@ -229,6 +232,7 @@ public sealed class TaxpoolService
         var e = TaxpoolVorlagenImport.Uebernehmen(daten, Settings, Personen);
         Settings.TaxpoolDatei = path;
         Settings.TaxpoolDateiStand = Stand(path);
+        Settings.TaxpoolLeseStand = AccountingSettings.AktuellerTaxpoolLeseStand;
         e.Hinweise.Insert(0, Path.GetFileName(path) + ": " + e);
         return e;
     }
@@ -242,7 +246,8 @@ public sealed class TaxpoolService
         var path = Settings.TaxpoolDatei;
         if (string.IsNullOrWhiteSpace(path) || !(File.Exists(path) || Directory.Exists(path))) return null;
         var stand = Stand(path);
-        if (Settings.TaxpoolDateiStand is { } alt && stand <= alt) return null;
+        bool toolNeuer = Settings.TaxpoolLeseStand < AccountingSettings.AktuellerTaxpoolLeseStand;
+        if (!toolNeuer && Settings.TaxpoolDateiStand is { } alt && stand <= alt) return null;
         try
         {
             var e = ImportTaxpoolDatenbank(path);
